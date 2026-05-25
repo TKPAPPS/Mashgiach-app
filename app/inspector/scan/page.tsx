@@ -1,17 +1,21 @@
 'use client'
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 import { QrCode, CheckCircle, ArrowRight } from 'lucide-react'
 
 type ScanResult = {
   success: boolean
   action_type?: string
   location_name?: string
+  location_id?: string
+  visit_log_id?: string
   message?: string
 }
 
 export default function ScanPage() {
   const router = useRouter()
+  const supabase = createClient()
   const [qrCode, setQrCode] = useState('')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<ScanResult | null>(null)
@@ -34,7 +38,7 @@ export default function ScanPage() {
       lat = pos.coords.latitude
       lng = pos.coords.longitude
     } catch {
-      // GPS unavailable — server will handle accordingly
+      // GPS unavailable; server will handle accordingly
     }
     setGpsLoading(false)
 
@@ -43,7 +47,21 @@ export default function ScanPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ qr_code: qrCode.trim(), lat, lng }),
     })
-    const data = await res.json()
+    const data: ScanResult = await res.json()
+
+    // After a successful exit scan, check whether active checklist items exist.
+    // If they do, redirect to the checklist page instead of showing the result screen.
+    if (data.success && data.action_type === 'exit' && data.visit_log_id && data.location_id) {
+      const { count } = await supabase
+        .from('checklist_items')
+        .select('*', { count: 'exact', head: true })
+        .eq('active', true)
+      if (count && count > 0) {
+        router.push(`/inspector/checklist?visit_log_id=${data.visit_log_id}&location_id=${data.location_id}`)
+        return
+      }
+    }
+
     setResult(data)
     setLoading(false)
   }

@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Notify admins — non-fatal, mirrors the report route pattern
+  // Notify admins; non-fatal, mirrors the report route pattern
   try {
     const typeLabels: Record<string, string> = {
       vacation: 'חופשה', absence: 'היעדרות', replacement: 'החלפה', other: 'אחר',
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         title: 'בקשת היעדרות חדשה',
-        body: `${inspector?.full_name ?? ''} — ${typeLabels[request_type] ?? request_type}`,
+        body: `${inspector?.full_name ?? ''}, ${typeLabels[request_type] ?? request_type}`,
         url: '/admin',
       }),
     })

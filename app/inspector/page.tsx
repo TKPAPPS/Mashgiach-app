@@ -184,7 +184,7 @@ function ReportForm({ profile, locations }: { profile: Profile | null; locations
   if (error) return (
     <div className="card" style={{ textAlign: 'center', padding: 32 }}>
       <div style={{ color: 'var(--danger)', fontSize: '2rem' }}>✗</div>
-      <div style={{ marginTop: 8, color: 'var(--danger)' }}>שגיאה בשליחה — נסה שנית</div>
+      <div style={{ marginTop: 8, color: 'var(--danger)' }}>שגיאה בשליחה, נסה שנית</div>
     </div>
   )
 
@@ -259,7 +259,7 @@ function AbsenceForm({ profile, locations }: { profile: Profile | null; location
   if (error) return (
     <div className="card" style={{ textAlign: 'center', padding: 32 }}>
       <div style={{ color: 'var(--danger)', fontSize: '2rem' }}>✗</div>
-      <div style={{ marginTop: 8, color: 'var(--danger)' }}>שגיאה בשליחה — נסה שנית</div>
+      <div style={{ marginTop: 8, color: 'var(--danger)' }}>שגיאה בשליחה, נסה שנית</div>
     </div>
   )
 

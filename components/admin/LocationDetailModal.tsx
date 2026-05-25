@@ -110,7 +110,7 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
   ]
 
   return (
-    <Modal open onClose={onClose} title={`${loc.name} — ${loc.city ?? ''}`} size="xl">
+    <Modal open onClose={onClose} title={`${loc.name}${loc.city ? `, ${loc.city}` : ''}`} size="xl">
       <div className="innerTabs">
         {INNER_TABS.map(t => (
           <button key={t.id} className={`innerTab${tab === t.id ? ' innerTab--active' : ''}`}

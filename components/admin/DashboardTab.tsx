@@ -91,7 +91,7 @@ export default function DashboardTab() {
                 <AlertTriangle size={16} /> {alerts.length} חריגות GPS לא מטופלות
               </div>
               <p style={{ fontSize: '.78rem', color: 'var(--muted)', margin: 0 }}>
-                המשגיח סרק QR ממרחק העולה על 100 מטר מהמקום — יתכן שינוי מיקום חשוד. סמן כנקרא לאחר בדיקה.
+                המשגיח סרק QR ממרחק העולה על 100 מטר מהמקום. יתכן שינוי מיקום חשוד. סמן כנקרא לאחר בדיקה.
               </p>
             </div>
             <button

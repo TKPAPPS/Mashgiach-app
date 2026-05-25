@@ -43,11 +43,11 @@ function LocationForm({
 
       {/* GPS */}
       <div className="fieldRow">
-        <label className="field"><span>קו רוחב — Latitude</span><input name="lat" type="number" step="any" defaultValue={loc?.lat ?? ''} placeholder="13.7563" /></label>
-        <label className="field"><span>קו אורך — Longitude</span><input name="lng" type="number" step="any" defaultValue={loc?.lng ?? ''} placeholder="100.5018" /></label>
+        <label className="field"><span>קו רוחב (Latitude)</span><input name="lat" type="number" step="any" defaultValue={loc?.lat ?? ''} placeholder="13.7563" /></label>
+        <label className="field"><span>קו אורך (Longitude)</span><input name="lng" type="number" step="any" defaultValue={loc?.lng ?? ''} placeholder="100.5018" /></label>
       </div>
 
-      {/* Status — edit only */}
+      {/* Status (edit only) */}
       {loc && (
         <label className="field"><span>סטטוס</span>
           <select name="status" defaultValue={loc.status}>
@@ -127,7 +127,7 @@ export default function LocationsTab() {
         kashrus_procedure_file_url: null,
         kashrus_certificate_url: null,
       }).select().single()
-      if (error) { toast('שגיאה ביצירה — בדוק שקוד QR ייחודי', 'error'); setSaving(false); return }
+      if (error) { toast('שגיאה ביצירה. בדוק שקוד QR ייחודי', 'error'); setSaving(false); return }
       toast('המקום נוסף בהצלחה', 'success')
       setAddOpen(false)
       if (created) setDetailLoc(created as Location)
@@ -239,7 +239,7 @@ export default function LocationsTab() {
       </Modal>
 
       {/* QR display */}
-      <Modal open={!!qrLoc} onClose={() => setQrLoc(null)} title={`קוד QR — ${qrLoc?.name ?? ''}`}>
+      <Modal open={!!qrLoc} onClose={() => setQrLoc(null)} title={`קוד QR: ${qrLoc?.name ?? ''}`}>
         {qrLoc && (
           <div style={{ textAlign: 'center', padding: '8px 0' }}>
             <p style={{ color: 'var(--muted)', fontSize: '.875rem', marginBottom: 16 }}>

@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'The Kosher Place — Mashgiach',
+  title: 'The Kosher Place: Mashgiach',
   description: 'מערכת מעקב ובקרה לביקורי משגיחים',
   manifest: '/manifest.json',
   appleWebApp: { capable: true, title: 'Mashgiach', statusBarStyle: 'default' },

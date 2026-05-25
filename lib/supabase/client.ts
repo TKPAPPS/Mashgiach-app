@@ -38,7 +38,7 @@ function createDevMockClient() {
     auth: {
       getUser:              async () => ({ data: { user: null }, error: null }),
       getSession:           async () => ({ data: { session: null }, error: null }),
-      signInWithPassword:   async () => ({ data: null, error: { message: 'DEV — no Supabase connected' } }),
+      signInWithPassword:   async () => ({ data: null, error: { message: 'DEV: no Supabase connected' } }),
       signOut:              async () => ({ error: null }),
       onAuthStateChange:    () => ({ data: { subscription: { unsubscribe: () => {} } } }),
     },

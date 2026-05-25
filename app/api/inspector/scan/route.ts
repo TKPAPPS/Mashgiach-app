@@ -128,6 +128,12 @@ export async function POST(req: NextRequest) {
     // Non-fatal
   }
 
-  // Always return generic success to inspector
-  return NextResponse.json({ success: true, action_type, location_name: location.name })
+  // Always return generic success to inspector; include visit_log_id so scan page can redirect to checklist
+  return NextResponse.json({
+    success: true,
+    action_type,
+    location_name: location.name,
+    location_id: location.id,
+    visit_log_id: visitLog?.id ?? null,
+  })
 }

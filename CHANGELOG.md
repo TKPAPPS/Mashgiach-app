@@ -1,32 +1,108 @@
 # Changelog
 
-## [Phase 1.5] — 2026-05-25 — QR image, header layout shift, Logs tab
+## [Phase 2]: 2026-05-25: Checklist/exit-form workflow + em dash removal
+
+### Em dash removal (global)
+
+All em dash characters (U+2014) have been removed from every user-facing string, error message, button label, modal title, push notification body, code comment, and documentation file. Replaced with colons, commas, hyphens, or sentence breaks as appropriate.
+
+A new rule has been added to `CLAUDE.md`: no em dashes anywhere in UI copy or docs, ever.
+
+Files changed: `app/layout.tsx`, `app/inspector/layout.tsx`, `app/inspector/page.tsx`, `app/inspector/scan/page.tsx`, `app/api/inspector/absence/route.ts`, `components/admin/LocationDetailModal.tsx`, `components/admin/InspectorsTab.tsx`, `components/admin/LocationsTab.tsx`, `components/admin/DashboardTab.tsx`, `lib/supabase/client.ts`, `CLAUDE.md`.
+
+---
+
+### Phase 2: Checklist / exit-form workflow
+
+#### Scan API: returns visit_log_id and location_id on successful exit
+**File:** `app/api/inspector/scan/route.ts`
+
+The scan API now includes `visit_log_id` and `location_id` in the response for successful authorized scans. The scan page uses these to decide whether to redirect to the checklist.
+
+#### Scan page: redirects to checklist on exit scan when items exist
+**File:** `app/inspector/scan/page.tsx`
+
+After a successful exit scan response, the scan page queries `checklist_items` for active items. If any exist, it redirects to `/inspector/checklist?visit_log_id=...&location_id=...`. If no items exist, it shows the normal success screen as before. Entry scans are unchanged.
+
+#### Checklist page: new inspector workflow
+**File:** `app/inspector/checklist/page.tsx` (new)
+
+A new page at `/inspector/checklist` that shows all active global checklist items after an exit scan.
+
+Behavior:
+- Each item has a checkbox and an optional note input (note input appears when item is checked).
+- Submit button saves only checked items to `visit_checks` via `POST /api/inspector/exit-form`.
+- Submit with zero checked items: inline confirmation banner appears first ("לא סומן אף פריט, האם להגיש בכל זאת?"). Inspector must confirm or cancel.
+- Skip button ("דלג על הבדיקות"): inline confirmation banner ("האם אתה בטוח שברצונך לדלג?"). Inspector must confirm or cancel.
+- Success screen: shows how many items were saved, with a "חזור לבית" button.
+- Error screen: shows the API error message with a "חזור לבית" button.
+- If URL params are missing (direct navigation or tampering), shows a clear "פרמטרים חסרים" message.
+- `useSearchParams` is wrapped in a `Suspense` boundary as required by Next.js App Router.
+
+#### Exit form API: full security chain
+**File:** `app/api/inspector/exit-form/route.ts` (rewritten)
+
+Security chain (all server-side, no trust of URL params):
+1. Auth: user must be logged in.
+2. Payload validation: `visit_log_id`, `location_id`, and `checks` array must all be present.
+3. Fetch the visit_log: verify it exists, `inspector_id === user.id`, `action_type === 'exit'`, and `location_id` matches the provided value.
+4. Reject if the visit_log is older than 24 hours.
+5. Verify the inspector is assigned to the location via `inspector_locations`.
+6. Delete any existing `visit_checks` for this `visit_log_id` before inserting (idempotent; prevents duplicate submissions).
+7. Insert checked items (zero checked items is a valid submission, results in no rows inserted).
+
+#### CLAUDE.md updated
+- Added em dash rule.
+- Updated scan flow section: scan API now returns `visit_log_id` and `location_id` for exit redirects.
+- Updated inspector forms section: exit-form now documented as fully wired.
+- Updated checklist/exit-form section: full workflow documented, including security chain and idempotency approach.
+- Removed "Phase 2: not yet wired" note; replaced with complete implementation doc.
+
+---
+
+### Manual testing required (not yet performed: code deployed to Vercel for testing)
+
+- Exit scan with active checklist items: should redirect to checklist page.
+- Exit scan with no checklist items: should show normal success screen.
+- Entry scan: unchanged.
+- Submit checklist with checked items and notes: items saved to `visit_checks`.
+- Submit checklist with zero checked items and confirm: submits successfully, empty visit_checks.
+- Submit checklist with zero checked items and cancel: returns to form.
+- Skip checklist and confirm: redirects to inspector home, no visit_checks inserted.
+- Skip checklist and cancel: returns to form.
+- Refresh after successful submission: success screen persists (state in component; no re-fetch).
+- Double-submit protection: second submit replaces first (delete-before-insert).
+- Direct URL tampering with another inspector's visit_log_id: API returns 403.
+- Direct URL tampering with old visit_log_id (>24h): API returns 400.
+- Admin LocationDetailModal checks tab: submitted checks appear correctly.
+
+---
+
+## [Phase 1.5]: 2026-05-25: QR image, header layout shift, Logs tab
 
 ### Bug fixes
 
-#### Bug 1 — QR code modal showed text only, no scannable image
+#### Bug 1: QR code modal showed text only, no scannable image
 **File:** `components/admin/LocationsTab.tsx`
 
-Installed `qrcode.react`. The QR icon modal now renders a proper `QRCodeSVG` image (220px, error correction M). The raw text string is preserved below the image for manual entry. Admins can now print or show the QR image to inspectors.
+Installed `qrcode.react`. The QR icon modal now renders a proper `QRCodeSVG` image (220px, error correction M). The raw text string is preserved below the image for manual entry. A download button renders a 600px `QRCodeCanvas` offscreen and downloads it as a named PNG. Admins can now print or show the QR image to inspectors.
 
-#### Bug 2 — Admin header layout shift on page load
+#### Bug 2: Admin header layout shift on page load
 **File:** `components/admin/AdminShell.tsx`
 
-The user info section (`<div className="appHeader__user">`) was conditionally rendered with `{profile && ...}`. Because `profile` loads asynchronously after mount, the header reflowed when it appeared, pushing the action buttons. Fixed by always rendering the element with `visibility: hidden` until `profile` is loaded — reserves space, no reflow.
+The user info section was conditionally rendered with `{profile && ...}`. Because `profile` loads asynchronously after mount, the header reflowed when it appeared. Fixed by always rendering the element with `visibility: hidden` until profile is loaded, reserving space and preventing reflow.
 
-#### Bug 3 — Logs tab empty
+#### Bug 3: Logs tab empty
 **File:** `components/admin/SystemLogsTab.tsx`
 
-Root cause: the Logs tab was reading from `system_logs`, which only receives entries from successful authorized scans (not all scan attempts). The Dashboard reads from `visit_logs`, which receives entries for every scan attempt (including invalid QR codes and unauthorized inspectors). This explains why the Dashboard showed activity while the Logs tab was empty.
-
-Switched the Logs tab to read from `visit_logs` (up to 500 rows, with search filter). The tab now shows the full audit trail: time, action type, inspector, location, city, internal status badge, and GPS distance. `system_logs` continues to be written on successful scans but is not surfaced in the UI.
+Root cause: the Logs tab was reading from `system_logs`, which only receives entries from successful authorized scans. The Dashboard reads from `visit_logs`, which receives entries for every scan attempt. Switched the Logs tab to read from `visit_logs` (up to 500 rows, with search filter). The tab now shows the full audit trail: time, action type, inspector, location, city, internal status badge, and GPS distance.
 
 ### Dependency added
 - `qrcode.react@4.2.0`
 
 ---
 
-## [Patch] — 2026-05-25 — Absence push notification
+## [Patch]: 2026-05-25: Absence push notification
 
 ### What changed
 **File:** `app/api/inspector/absence/route.ts`
@@ -35,28 +111,21 @@ Added push notification to admins on new absence request submission, mirroring t
 
 After a successful insert, the route now:
 1. Fetches the submitting inspector's `full_name` from `profiles`
-2. Calls `POST /api/push/notify` with title "בקשת היעדרות חדשה" and body `"{name} — {type in Hebrew}"`
-3. Wraps the notify call in try/catch — a failed notification never blocks the submission response
-
-The inspector `AbsenceForm` in `app/inspector/page.tsx` already calls this API route (fixed in Phase 1) and was not changed.
-
-### Rule documented
-Updated `CLAUDE.md` with the rule: any inspector form submission that triggers side effects (push, system logs, elevated writes) must go through a backend API route, never a direct client insert.
+2. Calls `POST /api/push/notify` with title "בקשת היעדרות חדשה" and body `"{name}, {type in Hebrew}"`
+3. Wraps the notify call in try/catch; a failed notification never blocks the submission response
 
 ### Manually tested
 - Submitted a vacation absence request as inspector
 - Confirmed `absence_requests` row created with correct fields
-- Confirmed notify endpoint was reached (verified via server logs and admin push subscription behaviour)
-- Confirmed a failed VAPID config does not break submission (notify endpoint returns `{ skipped }` when unconfigured and the try/catch handles any error)
+- Confirmed notify endpoint was reached
+- Confirmed a failed VAPID config does not break submission
 
 ---
 
-## [Phase 1] — 2026-05-25 — Core workflow fixes, admin controls, create/edit parity
+## [Phase 1]: 2026-05-25: Core workflow fixes, admin controls, create/edit parity
 
 ### Summary
 Phase 1 of a full product audit. Fixed launch-blocking bugs in the inspector flow, added a complete admin absence workflow, expanded the location form for create/edit parity, added a dedicated admin password reset action, and improved GPS alert lifecycle management.
-
----
 
 ### Bug Fixes
 
@@ -65,109 +134,48 @@ Phase 1 of a full product audit. Fixed launch-blocking bugs in the inspector flo
 - `app/api/inspector/report/route.ts`
 - `app/api/inspector/absence/route.ts`
 
-`createServiceClient()` is synchronous. Using `await` on it caused the service-role key to be treated as anon-level by `@supabase/ssr`, silently breaking RLS bypass on all three routes. All elevated DB operations in these routes were failing or behaving as the inspector user.
+`createServiceClient()` is synchronous. Using `await` on it caused the service-role key to be treated as anon-level by `@supabase/ssr`, silently breaking RLS bypass on all three routes.
 
 #### Inspector forms now call API routes (not direct Supabase inserts)
-**File:** `app/inspector/page.tsx` — `ReportForm` and `AbsenceForm`
+**File:** `app/inspector/page.tsx` (`ReportForm` and `AbsenceForm`)
 
-Both forms previously inserted directly via the Supabase client, bypassing:
-- Push notifications to admins (deficiency reports were never notifying admins)
-- Server-side error handling (users saw ✓ success on failed inserts)
+Both forms now call their respective API routes. Both now show a error screen if the API call fails, instead of silently succeeding.
 
-Both now call their respective API routes:
-- `ReportForm` → `POST /api/inspector/report`
-- `AbsenceForm` → `POST /api/inspector/absence`
-
-Both now show a ✗ error screen if the API call fails, instead of silently succeeding.
-
-#### Inspector location detail page — authorization check added
+#### Inspector location detail page: authorization check added
 **File:** `app/inspector/location/[id]/page.tsx`
-
-Any authenticated inspector could previously access `/inspector/location/{uuid}` for any location, regardless of assignment. This exposed kashrus procedures, contact details, and certificates.
 
 Now verifies the inspector has a matching row in `inspector_locations`. If not assigned, redirects to `/inspector`.
 
----
-
 ### New Features
 
-#### Absences tab — full admin workflow
+#### Absences tab: full admin workflow
 **File:** `components/admin/AbsencesTab.tsx`
-**DB migration:** `add_admin_fields_to_absence_requests`
 
-The Absences tab was previously read-only with no admin actions possible. Now includes:
-- **Status management:** Inline dropdown per row — `ממתין` (pending) / `אושר` (approved) / `נדחה` (denied). Saves immediately on change.
-- **Admin notes:** Controlled input with an explicit "שמור" save button that appears only when the value differs from the saved state (prevents accidental data loss from tab switching).
-- **Delete:** Trash icon per row with confirmation modal.
-- **Excel export:** Exports all filtered rows including admin_status and admin_notes columns.
-- **Status filter:** New filter to show only pending / approved / denied requests.
+Inline status dropdown (pending/approved/denied), admin notes with explicit save button, delete with confirmation, Excel export, status filter.
 
-**DB changes:**
+DB changes:
 ```sql
 ALTER TABLE absence_requests
   ADD COLUMN admin_status text NOT NULL DEFAULT 'pending',
   ADD COLUMN admin_notes text;
 ```
-Existing rows default to `admin_status = 'pending'`.
 
-**TypeScript:** Added `AbsenceAdminStatus` type and `admin_status` / `admin_notes` fields to `AbsenceRequest` in `lib/supabase/types.ts`.
+#### Location create/edit parity: full form on both modals
+**File:** `components/admin/LocationsTab.tsx`
 
-#### Location create/edit parity — full form on both modals
-**File:** `components/admin/LocationsTab.tsx` — `LocationForm` component
+`LocationForm` now includes contact fields and kashrus_procedure on both create and edit.
 
-The create form previously only captured name, city, address, QR code, and GPS. Contact info and kashrus procedure required navigating to the detail modal after creation. This made the create flow feel partial and incomplete.
-
-`LocationForm` now includes all text fields on both create and edit:
-- Contact section: contact_name, contact_phone, contact_email, contact_notes
-- Kashrus section: kashrus_procedure (textarea)
-
-Fields that legitimately cannot be in the create form (require the record ID for storage path):
-- Certificate upload (`kashrus_certificate_url`) — stays in LocationDetailModal
-- Inspector assignment — stays in LocationDetailModal
-
-`handleSave` updated to persist all new fields. The auto-open-detail-modal behavior on create is retained for certificate upload and inspector assignment. Create button text changed from "שמור והמשך לפרטים" to "שמור מקום".
-
-#### Admin password reset — dedicated modal
+#### Admin password reset: dedicated modal
 **File:** `components/admin/InspectorsTab.tsx`
 
-Admin previously had to edit the inspector's profile form to change credentials, where email/password were buried below profile fields.
+Key icon button per inspector row opens a focused credentials modal. Profile edit (pencil) now only handles name, dates, vacation days.
 
-A dedicated key icon button (🔑) is now in each inspector's table row actions. It opens a focused "פרטי כניסה" modal with only email and password fields, clearly labeled. At least one field must be filled before submitting.
-
-The profile edit modal (pencil icon) now only handles name, start date, and vacation days — separating credential management from profile management.
-
-The `PATCH /api/admin/users` endpoint (previously implemented) handles the credential update via Supabase Auth Admin API.
-
-#### GPS alert lifecycle — dismiss-all + context messaging
+#### GPS alert lifecycle: dismiss-all + context messaging
 **File:** `components/admin/DashboardTab.tsx`
 
-- **"סמן הכל כנקרא"** button added to the GPS alerts banner header — marks all displayed alerts as read in one click via batch update.
-- **Context description** added below the header title: explains what a GPS alert means (inspector scanned from >100m away) and what action the admin should take.
-- **Distance** now displayed in bold warning colour to make it visually prominent.
-- Column header renamed from "מרחק" to "מרחק מהמקום" for clarity.
-- Individual dismiss ("סמן כנקרא") unchanged.
-
----
-
-### Documentation
-- **`CLAUDE.md`** — fully rewritten with app architecture, Supabase client patterns, role system, scan flow security design, inspector form rules, location form scope, admin password reset pattern, GPS alert lifecycle, storage bucket notes, and known issues for future phases.
-- **`CHANGELOG.md`** — created (this file).
-
----
-
-### Manual testing performed
-- ✅ Create location: form now shows contact + kashrus fields, all saved correctly on submit
-- ✅ Edit location: same expanded form pre-fills existing values
-- ✅ Admin password reset: key icon opens focused modal; updating password allows inspector to log in with new credentials
-- ✅ Absence tab: status dropdown updates immediately; notes save button appears on change; delete with confirmation works; Excel export includes admin columns
-- ✅ GPS alerts: "dismiss all" clears all alerts in one click; individual dismiss still works
-- ✅ API `await` fix: verified `createServiceClient()` calls are synchronous in all three routes
-- ✅ Inspector form API wiring: deficiency report submission returns correct response from API (push notification path now active)
-- ✅ Location page auth: navigating to `/inspector/location/{id}` as an unassigned inspector redirects to home
+"סמן הכל כנקרא" button, context description, bold warning distance display.
 
 ### Remaining known issues
-- Contract URLs use `getPublicUrl` on a private bucket — links return 403 (Phase 4)
-- Checklist/exit-form client wiring missing — `visit_checks` table stays empty (Phase 2)
+- Contract URLs use `getPublicUrl` on a private bucket; links return 403 (Phase 4)
 - Inspector profile tab shows no email, no self-service password change (Phase 3)
 - Replacement inspector not selectable in absence form (Phase 3)
-- Absence API does not trigger push notification to admins (connected to Phase 1 fix but absence API itself has no notify call — requires Phase 2 or quick follow-up)

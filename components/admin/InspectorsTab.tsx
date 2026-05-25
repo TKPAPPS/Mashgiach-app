@@ -227,7 +227,7 @@ export default function InspectorsTab() {
       </Modal>
 
       {/* Reset credentials modal */}
-      <Modal open={!!resetInsp} onClose={() => setResetInsp(null)} title={`פרטי כניסה — ${resetInsp?.full_name ?? ''}`}
+      <Modal open={!!resetInsp} onClose={() => setResetInsp(null)} title={`פרטי כניסה: ${resetInsp?.full_name ?? ''}`}
         footer={<>
           <button className="button button--ghost" onClick={() => setResetInsp(null)}>ביטול</button>
           <button className="button button--primary" type="submit" form="insp-reset-form" disabled={saving}>
