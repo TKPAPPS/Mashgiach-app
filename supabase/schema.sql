@@ -1,5 +1,5 @@
 -- ============================================================
--- Mashgiach App — Full Database Schema
+-- Mashgiach App: Full Database Schema
 -- Run this in Supabase SQL Editor after creating your project
 -- ============================================================
 
@@ -268,6 +268,6 @@ CREATE POLICY "ps_self_all"           ON push_subscriptions FOR ALL TO authentic
 -- STORAGE BUCKETS (run in Supabase Dashboard > Storage)
 -- -------------------------------------------------------
 -- Create these buckets manually or via Supabase CLI:
---   "contracts"          (private) — inspector contracts
---   "certificates"       (private) — kashrus certificates
---   "kashrus-procedures" (private) — kashrus procedure files
+--   "contracts"          (private) - inspector contracts
+--   "certificates"       (private) - kashrus certificates
+--   "kashrus-procedures" (private) - kashrus procedure files

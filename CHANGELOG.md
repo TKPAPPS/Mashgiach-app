@@ -41,21 +41,37 @@ No code changes. Documented in `CLAUDE.md` as a known pattern to address in a fu
 
 Added `overflow-y: scroll` to the `html` rule. Reserves the scrollbar gutter permanently, preventing layout shift when page content transitions from non-scrollable to scrollable. The existing 5px custom scrollbar style makes the reserved gutter minimally visible.
 
-### Manual testing required
+### QA status (2026-05-25)
 
-- Inspector profile shows email
-- Inspector password change: mismatch shows error, < 6 chars shows error, success shows confirmation
-- Inspector can log out and log in with new password
-- Admin Inspectors tab shows email column
-- Admin inspector detail modal shows email
-- Admin key icon password reset works, email reset works
-- Replacement selector appears only for type "החלפה"
-- Replacement list excludes current inspector, prefers inspectors assigned to selected location
-- Absence request saves replacement_inspector_id
-- Admin can update replacement inspector on replacement requests
-- Check-in state badge shows "בפנים"/"בחוץ" correctly
-- Desktop layout no longer shifts from scrollbar loading
-- Build and typecheck pass
+**Code-level verification: complete**
+- Build: clean
+- TypeScript: clean
+- Em dash audit on all 8 changed files: clean
+
+**DB-level simulation: complete**
+- `replacement_inspector_id` column confirmed present in `absence_requests`
+- Replacement API logic simulated via SQL: assignment check, other-inspector query, empty-location case all return correct results
+- `ar_admin_all` RLS policy on `absence_requests` confirmed: admin UPDATE of `replacement_inspector_id` is permitted
+- Check-in badge logic confirmed: all seed data visits end with `exit`, so all badges show "בחוץ"; "בפנים" requires a live entry scan
+
+**Browser QA: requires human with inspector and admin credentials**
+Claude Code cannot open a browser, authenticate as a user, or interact with JavaScript-rendered UI. The following tests must be verified by a human tester in the deployed Vercel app:
+- Inspector profile email display and password change flow (mismatch error, length error, success)
+- Inspector login with new password after change
+- Admin email column in Inspectors tab and detail modal
+- Admin key icon password and email reset, then confirm in table
+- Replacement absence flow: selector appears only after location selected, excludes self, location-filtered
+- Absence submission with replacement_inspector_id
+- Admin Absences tab: editable selector for replacement type, static dash for others, update with toast
+- Check-in badge "בפנים" after entry scan, "בחוץ" after exit scan
+- Desktop scrollbar behavior on short and long pages
+
+**Em dash cleanup: complete**
+Project-controlled files that contained em dashes were fixed:
+- `supabase/schema.sql` lines 2 and 271-273 (SQL comments): replaced with colons/hyphens
+- `AGENTS.md` line 4: em dash replaced with a period
+
+Location names in the production DB ("מלון קראון פלאזה - מטבח כשר" and "בית חב'ד - מטבח") are live user data, not controlled by code. They can be corrected through the admin UI Locations tab by editing each location's name field. No code change was made to DB data.
 
 ---
 
