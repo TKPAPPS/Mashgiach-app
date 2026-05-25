@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback, Suspense } from 'react'
+import { useState, useEffect, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { ArrowRight, CheckCircle, AlertTriangle } from 'lucide-react'
@@ -17,30 +17,36 @@ type Phase =
 function ChecklistInner() {
   const router = useRouter()
   const params = useSearchParams()
-  const supabase = createClient()
+  const supabase = useRef(createClient()).current
 
   const visitLogId = params.get('visit_log_id')
   const locationId = params.get('location_id')
+  const hasParams = !!visitLogId && !!locationId
 
-  const [phase, setPhase] = useState<Phase>('loading')
+  const [phase, setPhase] = useState<Phase>(hasParams ? 'loading' : 'no-params')
   const [submitting, setSubmitting] = useState(false)
   const [items, setItems] = useState<ChecklistItem[]>([])
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [notes, setNotes] = useState<Record<string, string>>({})
   const [errorMsg, setErrorMsg] = useState('')
 
-  const load = useCallback(async () => {
-    if (!visitLogId || !locationId) { setPhase('no-params'); return }
-    const { data } = await supabase
+  useEffect(() => {
+    if (!hasParams) return
+    let cancelled = false
+    supabase
       .from('checklist_items')
       .select('*')
       .eq('active', true)
       .order('sort_order')
-    setItems((data ?? []) as ChecklistItem[])
-    setPhase('form')
-  }, [visitLogId, locationId])
-
-  useEffect(() => { load() }, [load])
+      .then(({ data }) => {
+        if (cancelled) return
+        setItems((data ?? []) as ChecklistItem[])
+        setPhase('form')
+      })
+    return () => { cancelled = true }
+  // hasParams is derived from URL params (stable after mount); supabase ref is stable
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasParams])
 
   function toggleCheck(id: string) {
     setChecked(prev => {

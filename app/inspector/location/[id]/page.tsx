@@ -15,8 +15,6 @@ export default function InspectorLocationPage({ params }: { params: Promise<{ id
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => { loadAll() }, [id])
-
   async function loadAll() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { router.push('/login'); return }
@@ -36,6 +34,8 @@ export default function InspectorLocationPage({ params }: { params: Promise<{ id
     setChecklistItems((checklist ?? []) as ChecklistItem[])
     setLoading(false)
   }
+
+  useEffect(() => { loadAll() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) return (
     <div className="app" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100svh' }}>
