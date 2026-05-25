@@ -148,8 +148,34 @@ Alerts appear on the admin Dashboard when an inspector scans from > 100m away.
 - Notification body for absence: `"{inspector name}, {request type in Hebrew}"`
 - Failed notification calls are swallowed in a try/catch; they never fail the submission
 
+## Inspector profile
+- The profile tab shows the inspector's email (read-only, fetched from `supabase.auth.getUser()` on the client).
+- Inspector can change their own password via a form in the profile tab. Uses `supabase.auth.updateUser({ password })`. No current password required; the active session proves identity. Validates: length >= 6, confirm match.
+- Inspector cannot change their own email. Admin must do it via the key icon credentials modal in the Inspectors tab.
+
+## Admin inspector email visibility
+- Admin Inspectors tab shows an email column fetched from `GET /api/admin/users`, which calls `service.auth.admin.listUsers()`.
+- Email is also shown in the inspector detail modal.
+- Email lives only in Supabase Auth, not in `profiles`.
+
+## Replacement inspector selection
+- Inspector side: when absence type is "החלפה" and a location is selected, the form calls `GET /api/inspector/replacements?location_id=X`.
+  - The route verifies the requesting inspector is assigned to the location, then returns all other inspectors also assigned there.
+  - If no replacements are available: shows "אין משגיחים זמינים למיקום זה". Form can still be submitted without a replacement.
+  - `replacement_inspector_id` is included in the POST body to `/api/inspector/absence`.
+- Admin side: the "ממלא מקום" column in AbsencesTab shows an editable `<select>` for `request_type === 'replacement'` rows only.
+  - Shows inspectors assigned to the same location first (in an optgroup), then all others.
+  - On change: updates `absence_requests.replacement_inspector_id` directly via the admin Supabase client.
+  - For non-replacement types, shows a static read-only display.
+
+## Check-in state indicator
+- Inspector home location cards show a "בפנים" (green) or "בחוץ" (muted) badge based on the most recent VisitLog action_type.
+- Derived from `visitMap` already built in `loadAll()`. No additional data fetch needed.
+- "בפנים" = last action was `entry`. "בחוץ" = last action was `exit`, or no visit history.
+
+## Known lint patterns (future cleanup)
+13+ files use `useEffect(() => { loadFn() }, [])` with an async inner function that calls `setState`. This triggers `react-hooks/exhaustive-deps` warnings. The pattern is intentional (load-once on mount). Fixing all instances requires systematic `useCallback` or `.then()` refactoring across the codebase. Deferred to a dedicated future cleanup phase. Do not fix as part of feature work unless the file is already being substantially rewritten.
+
 ## Known issues (pending future phases)
 - Contract URLs use `getPublicUrl` on a private bucket; links won't work publicly (Phase 4)
-- Inspector profile tab does not show email or offer password change (Phase 3)
-- Replacement inspector not selectable in absence form (Phase 3)
 - `kashrus_procedure_file_url` field exists in schema but is not wired anywhere in UI

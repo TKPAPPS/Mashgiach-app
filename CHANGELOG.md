@@ -1,5 +1,64 @@
 # Changelog
 
+## [Phase 3]: 2026-05-25: Inspector profile, admin email, replacement inspector, check-in badge, scrollbar fix
+
+### Phase 3 summary
+
+7 items implemented. No DB migrations required.
+
+#### Item 1: Inspector profile email display + self-service password change
+**File:** `app/inspector/page.tsx`
+
+`ProfileView` now receives the inspector's email (from `supabase.auth.getUser()` stored in parent state) and displays it read-only below the name. A "שנה סיסמה" button expands an inline form with new password and confirm password fields. Validation: min 6 characters, confirm match. Calls `supabase.auth.updateUser({ password })` on the authenticated client. Success message auto-clears after 3 seconds, form collapses. Error message shows Supabase error text inline. No API route needed. No current password required (session proves identity). Admin remains the recovery path via key icon modal.
+
+#### Item 2: Admin inspector email visibility
+**Files:** `app/api/admin/users/route.ts`, `components/admin/InspectorsTab.tsx`
+
+New `GET /api/admin/users` handler: verifies admin role, calls `service.auth.admin.listUsers({ perPage: 1000 })`, returns `{ id, email }[]`. InspectorsTab fetches this on mount in parallel with profiles, builds an `emailMap`, and displays email in:
+- A new "אימייל" column in the inspectors table (after name)
+- The inspector detail modal info grid (full-width row below dates)
+
+#### Item 3: Admin password reset
+No code changes. Verified correct: key icon opens credentials modal, `PATCH /api/admin/users` calls `service.auth.admin.updateUserById`. Included in manual test report.
+
+#### Item 4: Replacement inspector selection
+**Files:** `app/api/inspector/replacements/route.ts` (new), `app/inspector/page.tsx`, `components/admin/AbsencesTab.tsx`
+
+Inspector side: `AbsenceForm` is now controlled for `type` and `locationId`. When type is "החלפה" and a location is selected, calls `GET /api/inspector/replacements?location_id=X`. The new API route verifies the requesting inspector is assigned to that location, then returns all other inspectors also assigned there (using service client). Shows a spinner while loading, "אין משגיחים זמינים למיקום זה" if empty, or a select of available inspectors. `replacement_inspector_id` is included in the POST body to `/api/inspector/absence` (the route already accepted it).
+
+Admin side: AbsencesTab loads all mashgiach profiles and all `inspector_locations` on mount. For `request_type === 'replacement'` rows, the "ממלא מקום" cell shows an editable select with inspectors assigned to the row's location in a priority optgroup, and all others below. On change, updates `absence_requests.replacement_inspector_id` directly. For non-replacement types, shows a static read-only display.
+
+#### Item 5: Check-in state indicator
+**File:** `app/inspector/page.tsx`
+
+Each location card on the inspector home now shows a "בפנים" (green) or "בחוץ" (muted) badge based on `loc.lastVisit?.action_type`. Derived from the `visitMap` already built in `loadAll()`; no additional fetch. The badge appears in the card header alongside the active/inactive badge.
+
+#### Item 6: Pre-existing lint warnings
+No code changes. Documented in `CLAUDE.md` as a known pattern to address in a future cleanup phase.
+
+#### Item 7: Desktop scrollbar layout shift
+**File:** `app/globals.css`
+
+Added `overflow-y: scroll` to the `html` rule. Reserves the scrollbar gutter permanently, preventing layout shift when page content transitions from non-scrollable to scrollable. The existing 5px custom scrollbar style makes the reserved gutter minimally visible.
+
+### Manual testing required
+
+- Inspector profile shows email
+- Inspector password change: mismatch shows error, < 6 chars shows error, success shows confirmation
+- Inspector can log out and log in with new password
+- Admin Inspectors tab shows email column
+- Admin inspector detail modal shows email
+- Admin key icon password reset works, email reset works
+- Replacement selector appears only for type "החלפה"
+- Replacement list excludes current inspector, prefers inspectors assigned to selected location
+- Absence request saves replacement_inspector_id
+- Admin can update replacement inspector on replacement requests
+- Check-in state badge shows "בפנים"/"בחוץ" correctly
+- Desktop layout no longer shifts from scrollbar loading
+- Build and typecheck pass
+
+---
+
 ## [Phase 2]: 2026-05-25: Checklist/exit-form workflow + em dash removal
 
 ### Em dash removal (global)

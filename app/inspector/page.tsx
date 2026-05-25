@@ -8,20 +8,23 @@ import { formatRelative, formatDate } from '@/lib/utils/format'
 import type { Location, Profile, VisitLog } from '@/lib/supabase/types'
 
 type LocationWithLastVisit = Location & { lastVisit?: VisitLog }
+type ReplacementInspector = { id: string; full_name: string }
 
 export default function InspectorHome() {
   const supabase = createClient()
   const router = useRouter()
   const [profile, setProfile] = useState<Profile | null>(null)
+  const [userEmail, setUserEmail] = useState<string | null>(null)
   const [locations, setLocations] = useState<LocationWithLastVisit[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'home' | 'report' | 'absence' | 'profile'>('home')
 
-  useEffect(() => { loadAll() }, [])
+  useEffect(() => { loadAll() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadAll() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { router.push('/login'); return }
+    setUserEmail(user.email ?? null)
 
     const [{ data: prof }, { data: il }, { data: recentVisits }] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', user.id).single(),
@@ -80,34 +83,42 @@ export default function InspectorHome() {
             <div style={{ fontWeight: 700, fontSize: '1.05rem', marginBottom: 4 }}>המקומות שלי</div>
             {locations.length === 0
               ? <div className="emptyState">לא שויכת למקומות עדיין.</div>
-              : locations.map(loc => (
-                <div key={loc.id} className="locationCard"
-                  onClick={() => router.push(`/inspector/location/${loc.id}`)}>
-                  <div className="locationCard__header">
-                    <div className="locationCard__name">
-                      <MapPin size={15} style={{ color: 'var(--primary)', flexShrink: 0 }} />
-                      {loc.name}
+              : locations.map(loc => {
+                const isInside = loc.lastVisit?.action_type === 'entry'
+                return (
+                  <div key={loc.id} className="locationCard"
+                    onClick={() => router.push(`/inspector/location/${loc.id}`)}>
+                    <div className="locationCard__header">
+                      <div className="locationCard__name">
+                        <MapPin size={15} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                        {loc.name}
+                      </div>
+                      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                        <span className={`badge ${isInside ? 'badge--success' : 'badge--muted'}`}>
+                          {isInside ? 'בפנים' : 'בחוץ'}
+                        </span>
+                        <span className={`badge ${loc.status === 'active' ? 'badge--success' : 'badge--muted'}`}>
+                          {loc.status === 'active' ? 'פעיל' : 'לא פעיל'}
+                        </span>
+                      </div>
                     </div>
-                    <span className={`badge ${loc.status === 'active' ? 'badge--success' : 'badge--muted'}`}>
-                      {loc.status === 'active' ? 'פעיל' : 'לא פעיל'}
-                    </span>
+                    {loc.city && <div className="locationCard__city">{loc.city}</div>}
+                    {loc.address && <div className="locationCard__address">{loc.address}</div>}
+                    {loc.lastVisit && (
+                      <div className="locationCard__lastVisit">
+                        ביקור אחרון: {formatRelative(loc.lastVisit.created_at)} •{' '}
+                        {loc.lastVisit.action_type === 'entry' ? 'כניסה' : 'יציאה'}
+                      </div>
+                    )}
+                    <button
+                      className="button button--primary"
+                      style={{ marginTop: 10, width: '100%' }}
+                      onClick={e => { e.stopPropagation(); router.push('/inspector/scan') }}>
+                      <QrCode size={15} /> סרוק QR
+                    </button>
                   </div>
-                  {loc.city && <div className="locationCard__city">{loc.city}</div>}
-                  {loc.address && <div className="locationCard__address">{loc.address}</div>}
-                  {loc.lastVisit && (
-                    <div className="locationCard__lastVisit">
-                      ביקור אחרון: {formatRelative(loc.lastVisit.created_at)} •{' '}
-                      {loc.lastVisit.action_type === 'entry' ? 'כניסה' : 'יציאה'}
-                    </div>
-                  )}
-                  <button
-                    className="button button--primary"
-                    style={{ marginTop: 10, width: '100%' }}
-                    onClick={e => { e.stopPropagation(); router.push('/inspector/scan') }}>
-                    <QrCode size={15} /> סרוק QR
-                  </button>
-                </div>
-              ))
+                )
+              })
             }
           </>
         )}
@@ -127,7 +138,7 @@ export default function InspectorHome() {
         )}
 
         {activeTab === 'profile' && profile && (
-          <ProfileView profile={profile} />
+          <ProfileView profile={profile} email={userEmail} />
         )}
       </main>
 
@@ -227,6 +238,31 @@ function AbsenceForm({ profile, locations }: { profile: Profile | null; location
   const [done, setDone] = useState(false)
   const [error, setError] = useState(false)
   const [type, setType] = useState('vacation')
+  const [locationId, setLocationId] = useState('')
+  const [replacementInspectors, setReplacementInspectors] = useState<ReplacementInspector[]>([])
+  const [replacementLoading, setReplacementLoading] = useState(false)
+
+  useEffect(() => {
+    if (type !== 'replacement' || !locationId) {
+      setReplacementInspectors([])
+      return
+    }
+    let cancelled = false
+    setReplacementLoading(true)
+    fetch(`/api/inspector/replacements?location_id=${locationId}`)
+      .then(r => r.json())
+      .then(data => {
+        if (cancelled) return
+        setReplacementInspectors(data.inspectors ?? [])
+        setReplacementLoading(false)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setReplacementInspectors([])
+        setReplacementLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [type, locationId])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -241,6 +277,7 @@ function AbsenceForm({ profile, locations }: { profile: Profile | null; location
         start_date: (fd.get('start_date') as string) || null,
         end_date: (fd.get('end_date') as string) || null,
         location_id: (fd.get('location_id') as string) || null,
+        replacement_inspector_id: (fd.get('replacement_inspector_id') as string) || null,
         notes: (fd.get('notes') as string) || null,
       }),
     })
@@ -254,6 +291,8 @@ function AbsenceForm({ profile, locations }: { profile: Profile | null; location
     setTimeout(() => setDone(false), 3000)
     ;(e.target as HTMLFormElement).reset()
     setType('vacation')
+    setLocationId('')
+    setReplacementInspectors([])
   }
 
   if (error) return (
@@ -288,11 +327,33 @@ function AbsenceForm({ profile, locations }: { profile: Profile | null; location
       {(type === 'replacement' || type === 'absence') && (
         <label className="field">
           <span>מקום</span>
-          <select name="location_id">
+          <select name="location_id" value={locationId} onChange={e => setLocationId(e.target.value)}>
             <option value="">בחר מקום</option>
             {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
         </label>
+      )}
+      {type === 'replacement' && locationId && (
+        replacementLoading ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--muted)', fontSize: '.85rem' }}>
+            <span className="spinner" style={{ width: 14, height: 14 }} />
+            <span>טוען משגיחים זמינים...</span>
+          </div>
+        ) : replacementInspectors.length === 0 ? (
+          <div style={{ color: 'var(--muted)', fontSize: '.85rem', padding: '4px 0' }}>
+            אין משגיחים זמינים למיקום זה
+          </div>
+        ) : (
+          <label className="field">
+            <span>ממלא מקום</span>
+            <select name="replacement_inspector_id">
+              <option value="">בחר ממלא מקום</option>
+              {replacementInspectors.map(i => (
+                <option key={i.id} value={i.id}>{i.full_name}</option>
+              ))}
+            </select>
+          </label>
+        )
       )}
       <label className="field">
         <span>הערות</span>
@@ -305,14 +366,46 @@ function AbsenceForm({ profile, locations }: { profile: Profile | null; location
   )
 }
 
-function ProfileView({ profile }: { profile: Profile }) {
+function ProfileView({ profile, email }: { profile: Profile; email: string | null }) {
+  const supabase = createClient()
+  const [pwOpen, setPwOpen] = useState(false)
+  const [newPw, setNewPw] = useState('')
+  const [confirmPw, setConfirmPw] = useState('')
+  const [pwSaving, setPwSaving] = useState(false)
+  const [pwError, setPwError] = useState('')
+  const [pwSuccess, setPwSuccess] = useState(false)
+
+  async function handlePasswordChange(e: React.FormEvent) {
+    e.preventDefault()
+    setPwError('')
+    if (newPw.length < 6) { setPwError('הסיסמה חייבת להכיל לפחות 6 תווים'); return }
+    if (newPw !== confirmPw) { setPwError('הסיסמאות אינן תואמות'); return }
+    setPwSaving(true)
+    const { error } = await supabase.auth.updateUser({ password: newPw })
+    setPwSaving(false)
+    if (error) { setPwError(error.message); return }
+    setPwSuccess(true)
+    setNewPw('')
+    setConfirmPw('')
+    setTimeout(() => { setPwSuccess(false); setPwOpen(false) }, 3000)
+  }
+
+  function closePwForm() {
+    setPwOpen(false)
+    setPwError('')
+    setPwSuccess(false)
+    setNewPw('')
+    setConfirmPw('')
+  }
+
   return (
     <div className="profileCard">
-      <div className="profileCard__avatar">
-        {profile.full_name.charAt(0)}
-      </div>
+      <div className="profileCard__avatar">{profile.full_name.charAt(0)}</div>
       <div className="profileCard__name">{profile.full_name}</div>
       <div className="profileCard__role">משגיח</div>
+      {email && (
+        <div style={{ color: 'var(--muted)', fontSize: '.85rem', marginTop: 4 }}>{email}</div>
+      )}
       <div className="profileCard__stats">
         <div className="profileCard__stat">
           <span>{profile.vacation_days_remaining}</span>
@@ -329,6 +422,46 @@ function ProfileView({ profile }: { profile: Profile }) {
           צפה בחוזה
         </a>
       )}
+
+      <div style={{ marginTop: 20, width: '100%' }}>
+        {!pwOpen ? (
+          <button className="button button--ghost" style={{ width: '100%' }}
+            onClick={() => setPwOpen(true)}>
+            שנה סיסמה
+          </button>
+        ) : (
+          <form onSubmit={handlePasswordChange} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {pwSuccess && (
+              <div style={{ color: 'var(--success)', textAlign: 'center', fontSize: '.9rem', padding: '6px 0' }}>
+                הסיסמה שונתה בהצלחה
+              </div>
+            )}
+            {pwError && (
+              <div style={{ color: 'var(--danger)', fontSize: '.85rem' }}>{pwError}</div>
+            )}
+            <label className="field">
+              <span>סיסמה חדשה</span>
+              <input type="password" value={newPw}
+                onChange={e => { setNewPw(e.target.value); setPwError('') }}
+                placeholder="לפחות 6 תווים" />
+            </label>
+            <label className="field">
+              <span>אימות סיסמה</span>
+              <input type="password" value={confirmPw}
+                onChange={e => { setConfirmPw(e.target.value); setPwError('') }}
+                placeholder="הכנס שוב את הסיסמה" />
+            </label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="button button--primary" type="submit" disabled={pwSaving} style={{ flex: 1 }}>
+                {pwSaving ? <span className="spinner" /> : 'שמור סיסמה'}
+              </button>
+              <button className="button button--ghost" type="button" onClick={closePwForm}>
+                ביטול
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
     </div>
   )
 }

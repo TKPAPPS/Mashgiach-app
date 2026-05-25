@@ -20,15 +20,17 @@ export default function InspectorsTab() {
   const [saving, setSaving] = useState(false)
   const [resetInsp, setResetInsp] = useState<Profile | null>(null)
   const [assignedLocs, setAssignedLocs] = useState<Record<string, string[]>>({})
+  const [emailMap, setEmailMap] = useState<Record<string, string | null>>({})
 
   useEffect(() => { loadAll() }, [])
 
   async function loadAll() {
     setLoading(true)
-    const [{ data: insp }, { data: locs }, { data: il }] = await Promise.all([
+    const [{ data: insp }, { data: locs }, { data: il }, emailsRes] = await Promise.all([
       supabase.from('profiles').select('*').eq('role', 'mashgiach').order('full_name'),
       supabase.from('locations').select('id,name,city,status').order('name'),
       supabase.from('inspector_locations').select('inspector_id,location_id'),
+      fetch('/api/admin/users'),
     ])
     setInspectors((insp ?? []) as Profile[])
     setLocations((locs ?? []) as Location[])
@@ -38,6 +40,12 @@ export default function InspectorsTab() {
       map[row.inspector_id].push(row.location_id)
     }
     setAssignedLocs(map)
+    if (emailsRes.ok) {
+      const emailList: { id: string; email: string | null }[] = await emailsRes.json()
+      const em: Record<string, string | null> = {}
+      for (const e of emailList) em[e.id] = e.email
+      setEmailMap(em)
+    }
     setLoading(false)
   }
 
@@ -145,12 +153,13 @@ export default function InspectorsTab() {
           <div className="tableWrap">
             <table>
               <thead>
-                <tr><th>שם</th><th>תאריך התחלה</th><th>ימי חופש</th><th>מקומות</th><th>חוזה</th><th></th></tr>
+                <tr><th>שם</th><th>אימייל</th><th>תאריך התחלה</th><th>ימי חופש</th><th>מקומות</th><th>חוזה</th><th></th></tr>
               </thead>
               <tbody>
                 {inspectors.map(insp => (
                   <tr key={insp.id}>
                     <td><strong>{insp.full_name}</strong></td>
+                    <td style={{ fontSize: '.82rem', color: 'var(--muted)' }}>{emailMap[insp.id] ?? <span className="mutedCell">-</span>}</td>
                     <td>{insp.start_date ? formatDate(insp.start_date) : <span className="mutedCell">-</span>}</td>
                     <td>{insp.vacation_days_remaining}</td>
                     <td>
@@ -265,6 +274,11 @@ export default function InspectorsTab() {
               </div>
               <div className="field"><span>ימי חופש</span>
                 <div>{detailInsp.vacation_days_remaining}</div>
+              </div>
+              <div className="field" style={{ gridColumn: '1 / -1' }}><span>אימייל</span>
+                <div style={{ fontSize: '.9rem', direction: 'ltr', textAlign: 'right' }}>
+                  {emailMap[detailInsp.id] ?? '-'}
+                </div>
               </div>
             </div>
 

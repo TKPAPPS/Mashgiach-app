@@ -36,16 +36,29 @@ export default function AbsencesTab() {
   const [statusFilter, setStatusFilter] = useState('')
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [editingNotes, setEditingNotes] = useState<Record<string, string>>({})
+  const [allInspectors, setAllInspectors] = useState<{ id: string; full_name: string }[]>([])
+  const [locationInspectors, setLocationInspectors] = useState<Record<string, string[]>>({})
 
   useEffect(() => { loadAll() }, [])
 
   async function loadAll() {
     setLoading(true)
-    const { data } = await supabase
-      .from('absence_requests')
-      .select('*, inspector:profiles(id,full_name), location:locations(id,name), replacement_inspector:profiles!absence_requests_replacement_inspector_id_fkey(id,full_name)')
-      .order('created_at', { ascending: false })
+    const [{ data }, { data: insp }, { data: il }] = await Promise.all([
+      supabase
+        .from('absence_requests')
+        .select('*, inspector:profiles(id,full_name), location:locations(id,name), replacement_inspector:profiles!absence_requests_replacement_inspector_id_fkey(id,full_name)')
+        .order('created_at', { ascending: false }),
+      supabase.from('profiles').select('id,full_name').eq('role', 'mashgiach').order('full_name'),
+      supabase.from('inspector_locations').select('inspector_id,location_id'),
+    ])
     setRequests((data ?? []) as AbsenceRequest[])
+    setAllInspectors((insp ?? []) as { id: string; full_name: string }[])
+    const locMap: Record<string, string[]> = {}
+    for (const row of (il ?? [])) {
+      if (!locMap[row.location_id]) locMap[row.location_id] = []
+      locMap[row.location_id].push(row.inspector_id)
+    }
+    setLocationInspectors(locMap)
     setLoading(false)
   }
 
@@ -61,6 +74,13 @@ export default function AbsencesTab() {
     if (error) { toast('שגיאה בשמירת הערה', 'error'); return }
     setRequests(prev => prev.map(r => r.id === id ? { ...r, admin_notes: notes || null } : r))
     toast('הערה נשמרה', 'success')
+  }
+
+  async function updateReplacement(id: string, replacement_inspector_id: string | null) {
+    const { error } = await supabase.from('absence_requests').update({ replacement_inspector_id }).eq('id', id)
+    if (error) { toast('שגיאה בעדכון ממלא מקום', 'error'); return }
+    setRequests(prev => prev.map(r => r.id === id ? { ...r, replacement_inspector_id } : r))
+    toast('ממלא המקום עודכן', 'success')
   }
 
   async function handleDelete() {
@@ -153,7 +173,36 @@ export default function AbsencesTab() {
                     <td>{r.start_date ? formatDate(r.start_date) : <span className="mutedCell">-</span>}</td>
                     <td>{r.end_date ? formatDate(r.end_date) : <span className="mutedCell">-</span>}</td>
                     <td>{(r.location as { name: string } | undefined)?.name ?? <span className="mutedCell">-</span>}</td>
-                    <td>{(r.replacement_inspector as { full_name: string } | undefined)?.full_name ?? <span className="mutedCell">-</span>}</td>
+                    <td>
+                      {r.request_type === 'replacement' ? (() => {
+                        const locId = r.location_id
+                        const assignedIds = new Set(locId ? (locationInspectors[locId] ?? []) : [])
+                        const hasAssigned = assignedIds.size > 0 && !!locId
+                        const assigned = hasAssigned ? allInspectors.filter(i => assignedIds.has(i.id)) : []
+                        const others = hasAssigned ? allInspectors.filter(i => !assignedIds.has(i.id)) : allInspectors
+                        return (
+                          <select
+                            value={r.replacement_inspector_id ?? ''}
+                            onChange={e => updateReplacement(r.id, e.target.value || null)}
+                            style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '3px 6px', fontSize: '.82rem', minWidth: 110 }}
+                          >
+                            <option value="">ללא</option>
+                            {hasAssigned && assigned.length > 0 && (
+                              <optgroup label="משויכים למקום">
+                                {assigned.map(i => <option key={i.id} value={i.id}>{i.full_name}</option>)}
+                              </optgroup>
+                            )}
+                            {others.length > 0 && (
+                              <optgroup label={hasAssigned ? 'אחרים' : 'כל המשגיחים'}>
+                                {others.map(i => <option key={i.id} value={i.id}>{i.full_name}</option>)}
+                              </optgroup>
+                            )}
+                          </select>
+                        )
+                      })() : (
+                        <span className="mutedCell">{(r.replacement_inspector as { full_name: string } | undefined)?.full_name ?? '-'}</span>
+                      )}
+                    </td>
                     <td style={{ maxWidth: 160, fontSize: '.82rem' }}>{r.notes ?? <span className="mutedCell">-</span>}</td>
                     <td>
                       <select
