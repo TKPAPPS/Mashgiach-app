@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, FormEvent } from 'react'
+import { useState, useEffect, useRef, FormEvent } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Plus, Pen, Trash2, QrCode, MapPin, Eye } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
@@ -7,7 +7,7 @@ import { useToast } from '@/components/ui/Toast'
 import { genQrCode } from '@/lib/utils/format'
 import type { Location } from '@/lib/supabase/types'
 import LocationDetailModal from './LocationDetailModal'
-import { QRCodeSVG } from 'qrcode.react'
+import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react'
 
 // Extracted to module level so React never remounts it on parent re-render
 function LocationForm({
@@ -85,6 +85,7 @@ export default function LocationsTab() {
   const [detailLoc, setDetailLoc] = useState<Location | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [qrLoc, setQrLoc] = useState<Location | null>(null)
+  const qrCanvasRef = useRef<HTMLCanvasElement>(null)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => { load() }, [])
@@ -248,10 +249,30 @@ export default function LocationsTab() {
               border: '2px solid var(--border)', borderRadius: 'var(--radius-lg)' }}>
               <QRCodeSVG value={qrLoc.qr_code} size={220} level="M" />
             </div>
+            {/* Hidden canvas used only for PNG download */}
+            <div style={{ position: 'absolute', left: -9999, top: -9999 }}>
+              <QRCodeCanvas ref={qrCanvasRef} value={qrLoc.qr_code} size={600} level="M" />
+            </div>
             <div style={{ marginTop: 12 }}>
               <code style={{ fontSize: '.85rem', fontFamily: 'monospace', color: 'var(--muted)' }}>
                 {qrLoc.qr_code}
               </code>
+            </div>
+            <div style={{ marginTop: 16 }}>
+              <button
+                className="button button--primary button--sm"
+                onClick={() => {
+                  const canvas = qrCanvasRef.current
+                  if (!canvas) return
+                  const url = canvas.toDataURL('image/png')
+                  const a = document.createElement('a')
+                  a.href = url
+                  a.download = `qr-${qrLoc.qr_code}.png`
+                  a.click()
+                }}
+              >
+                הורד QR (PNG)
+              </button>
             </div>
           </div>
         )}
