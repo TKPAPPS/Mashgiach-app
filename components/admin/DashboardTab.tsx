@@ -92,7 +92,7 @@ export default function DashboardTab() {
           </div>
           <div className="tableWrap">
             <table>
-              <thead><tr><th>זמן</th><th>משגיח</th><th>מקום</th><th>פעולה</th><th>מרחק</th></tr></thead>
+              <thead><tr><th>זמן</th><th>משגיח</th><th>מקום</th><th>פעולה</th><th>מרחק</th><th></th></tr></thead>
               <tbody>
                 {alerts.map(a => (
                   <tr key={a.id}>
@@ -101,6 +101,12 @@ export default function DashboardTab() {
                     <td>{(a.location as { name: string } | undefined)?.name ?? '-'}</td>
                     <td>{actionLabel(a.action_type ?? '')}</td>
                     <td>{a.distance_meters ? `${a.distance_meters} מ׳` : '-'}</td>
+                    <td>
+                      <button className="button button--ghost button--sm" onClick={async () => {
+                        await supabase.from('gps_alerts').update({ read: true }).eq('id', a.id)
+                        setAlerts(prev => prev.filter(x => x.id !== a.id))
+                      }}>סמן כנקרא</button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

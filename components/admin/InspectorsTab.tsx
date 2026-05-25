@@ -66,13 +66,29 @@ export default function InspectorsTab() {
     if (!editInsp) return
     setSaving(true)
     const fd = new FormData(e.currentTarget)
+    const newEmail = (fd.get('email') as string).trim()
+    const newPassword = (fd.get('password') as string).trim()
+
     const { error } = await supabase.from('profiles').update({
       full_name: fd.get('full_name') as string,
       start_date: (fd.get('start_date') as string) || null,
       vacation_days_remaining: Number(fd.get('vacation_days') || 0),
     }).eq('id', editInsp.id)
-    if (error) toast('שגיאה בעדכון', 'error')
-    else { toast('עודכן', 'success'); setEditInsp(null); loadAll() }
+    if (error) { toast('שגיאה בעדכון פרופיל', 'error'); setSaving(false); return }
+
+    if (newEmail || newPassword) {
+      const res = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editInsp.id, email: newEmail || undefined, password: newPassword || undefined }),
+      })
+      const json = await res.json()
+      if (!res.ok) { toast(json.error ?? 'שגיאה בעדכון כניסה', 'error'); setSaving(false); return }
+    }
+
+    toast('עודכן בהצלחה', 'success')
+    setEditInsp(null)
+    loadAll()
     setSaving(false)
   }
 
@@ -198,6 +214,10 @@ export default function InspectorsTab() {
               <label className="field"><span>תאריך התחלה</span><input name="start_date" type="date" defaultValue={editInsp.start_date ?? ''} /></label>
               <label className="field"><span>ימי חופש</span><input name="vacation_days" type="number" min={0} defaultValue={editInsp.vacation_days_remaining} /></label>
             </div>
+            <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '4px 0' }} />
+            <p style={{ fontSize: '.8rem', color: 'var(--muted)' }}>שנה פרטי כניסה (השאר ריק לאי-שינוי)</p>
+            <label className="field"><span>אימייל חדש</span><input name="email" type="email" placeholder="השאר ריק לאי-שינוי" /></label>
+            <label className="field"><span>סיסמה חדשה</span><input name="password" type="password" placeholder="השאר ריק לאי-שינוי" minLength={6} /></label>
           </form>
         )}
       </Modal>
