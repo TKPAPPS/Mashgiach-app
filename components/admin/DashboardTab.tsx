@@ -37,14 +37,14 @@ export default function DashboardTab() {
     // Stats
     const now = new Date()
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-    const [{ count: total }, { count: thisMonth }, { data: activeInsp }, { data: visitedLocs }] = await Promise.all([
+    const [{ count: total }, { count: thisMonth }, { count: inspCount }, { data: visitedLocs }] = await Promise.all([
       supabase.from('visit_logs').select('*', { count: 'exact', head: true }),
       supabase.from('visit_logs').select('*', { count: 'exact', head: true }).gte('created_at', monthStart),
       supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'mashgiach'),
       supabase.from('visit_logs').select('location_id').not('location_id', 'is', null),
     ])
     const uniqueLocs = new Set((visitedLocs ?? []).map((v: { location_id: string | null }) => v.location_id)).size
-    setStats({ total: total ?? 0, inspectors: activeInsp?.length ?? 0, locations: uniqueLocs, thisMonth: thisMonth ?? 0 })
+    setStats({ total: total ?? 0, inspectors: inspCount ?? 0, locations: uniqueLocs, thisMonth: thisMonth ?? 0 })
     setLoading(false)
   }
 

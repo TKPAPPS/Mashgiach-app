@@ -99,7 +99,7 @@ export default function InspectorsTab() {
     if (current.includes(locId)) {
       await supabase.from('inspector_locations').delete()
         .eq('inspector_id', inspId).eq('location_id', locId)
-      setAssignedLocs(prev => ({ ...prev, [inspId]: prev[inspId].filter(l => l !== locId) }))
+      setAssignedLocs(prev => ({ ...prev, [inspId]: (prev[inspId] ?? []).filter(l => l !== locId) }))
     } else {
       await supabase.from('inspector_locations').insert({ inspector_id: inspId, location_id: locId })
       setAssignedLocs(prev => ({ ...prev, [inspId]: [...(prev[inspId] ?? []), locId] }))
