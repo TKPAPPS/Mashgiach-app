@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { MapPin, QrCode, AlertTriangle, Calendar, User, LogOut } from 'lucide-react'
+import Image from 'next/image'
 import { formatRelative, formatDate } from '@/lib/utils/format'
 import type { Location, Profile, VisitLog } from '@/lib/supabase/types'
 
@@ -57,16 +58,17 @@ export default function InspectorHome() {
     <div className="app" style={{ maxWidth: 480, margin: '0 auto' }}>
       <header className="appHeader">
         <div className="appHeader__brand">
-          <div className="appHeader__title">מעקב כשרות</div>
+          <Image src="/logo.png" alt="The Kosher Place" width={100} height={56} priority className="appHeader__logo" />
         </div>
         {profile && (
           <div className="appHeader__user">
             <strong>{profile.full_name}</strong>
+            <span>משגיח</span>
           </div>
         )}
         <div className="appHeader__actions">
           <button className="button button--icon button--ghost" onClick={logout}
-            style={{ color: '#fff', border: 'none' }} title="יציאה">
+            style={{ color: '#fff', border: 'none', opacity: .85 }} title="יציאה">
             <LogOut size={16} />
           </button>
         </div>

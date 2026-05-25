@@ -1,12 +1,19 @@
 'use client'
-import { useState, FormEvent } from 'react'
+import { useState, FormEvent, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { ShieldCheck } from 'lucide-react'
+import Image from 'next/image'
 
 export default function LoginPage() {
   const router = useRouter()
   const supabase = createClient()
+
+  useEffect(() => {
+    if (process.env.NEXT_PUBLIC_DEV_BYPASS === 'true') {
+      router.replace('/admin')
+    }
+  }, [router])
+
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -24,7 +31,6 @@ export default function LoginPage() {
       return
     }
 
-    // Fetch role
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setError('שגיאה בהתחברות'); setLoading(false); return }
 
@@ -36,43 +42,49 @@ export default function LoginPage() {
   return (
     <div className="loginWrap">
       <div className="loginCard">
-        <div className="loginCard__brand">
-          <div className="iconWrap">
-            <ShieldCheck size={28} />
-          </div>
-          <h1>מעקב ביקורי משגיחים</h1>
-          <p>מערכת מעקב ובקרה</p>
+        <div className="loginCard__top">
+          <Image
+            src="/logo.png"
+            alt="The Kosher Place Mashgiach"
+            width={220}
+            height={124}
+            priority
+            className="loginCard__logo"
+          />
+          <p className="loginCard__subtitle">מערכת מעקב ובקרה למשגיחים</p>
         </div>
 
-        {error && <div className="errorBox">{error}</div>}
+        <div className="loginCard__body">
+          {error && <div className="errorBox">{error}</div>}
 
-        <form className="form" onSubmit={handleSubmit}>
-          <label className="field field--ltr">
-            <span>אימייל</span>
-            <input
-              type="email"
-              autoComplete="email"
-              placeholder="name@example.com"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              required
-            />
-          </label>
-          <label className="field field--ltr">
-            <span>סיסמה</span>
-            <input
-              type="password"
-              autoComplete="current-password"
-              placeholder="••••••••"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              required
-            />
-          </label>
-          <button className="button button--primary button--wide button--lg" type="submit" disabled={loading}>
-            {loading ? <span className="spinner" /> : 'התחברות'}
-          </button>
-        </form>
+          <form className="form" onSubmit={handleSubmit}>
+            <label className="field field--ltr">
+              <span>אימייל</span>
+              <input
+                type="email"
+                autoComplete="email"
+                placeholder="name@example.com"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                required
+              />
+            </label>
+            <label className="field field--ltr">
+              <span>סיסמה</span>
+              <input
+                type="password"
+                autoComplete="current-password"
+                placeholder="••••••••"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                required
+              />
+            </label>
+            <button className="button button--primary button--wide button--lg" type="submit" disabled={loading}>
+              {loading ? <span className="spinner" style={{ borderTopColor: '#fff' }} /> : 'התחברות'}
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   )

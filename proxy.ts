@@ -2,6 +2,13 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 
 export async function proxy(request: NextRequest) {
+  // Dev bypass: skip auth when NEXT_PUBLIC_DEV_BYPASS=true
+  if (process.env.NEXT_PUBLIC_DEV_BYPASS === 'true') {
+    const { pathname } = request.nextUrl
+    if (pathname === '/') return NextResponse.redirect(new URL('/admin', request.url))
+    return NextResponse.next({ request })
+  }
+
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(

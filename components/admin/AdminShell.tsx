@@ -3,10 +3,11 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
-  ShieldCheck, RefreshCw, LogOut,
+  RefreshCw, LogOut,
   CalendarDays, MapPin, Users, FileText,
-  AlertTriangle, CheckSquare, ScrollText, List
+  AlertTriangle, CheckSquare, ScrollText
 } from 'lucide-react'
+import Image from 'next/image'
 import type { Profile } from '@/lib/supabase/types'
 
 import DashboardTab    from './DashboardTab'
@@ -39,6 +40,12 @@ export default function AdminShell() {
   const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
+    if (process.env.NEXT_PUBLIC_DEV_BYPASS === 'true') {
+      setProfile({ id: 'dev', full_name: 'מנהל', role: 'admin',
+        start_date: null, vacation_days_remaining: 0, contract_url: null,
+        created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      return
+    }
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return
       supabase.from('profiles').select('*').eq('id', user.id).single()
@@ -47,6 +54,7 @@ export default function AdminShell() {
   }, [])
 
   async function logout() {
+    if (process.env.NEXT_PUBLIC_DEV_BYPASS === 'true') return
     await supabase.auth.signOut()
     router.push('/login')
   }
@@ -57,8 +65,17 @@ export default function AdminShell() {
     <div className="app">
       <header className="appHeader">
         <div className="appHeader__brand">
-          <ShieldCheck size={18} className="appHeader__icon" aria-hidden />
-          <div className="appHeader__title">דשבורד מנהל</div>
+          <Image
+            src="/logo.png"
+            alt="The Kosher Place"
+            width={120}
+            height={68}
+            priority
+            className="appHeader__logo"
+          />
+          {process.env.NEXT_PUBLIC_DEV_BYPASS === 'true' && (
+            <span style={{ fontSize: '.65rem', background: 'var(--gold)', color: '#fff', padding: '2px 7px', borderRadius: 99, fontWeight: 700, flexShrink: 0 }}>DEV</span>
+          )}
         </div>
         {profile && (
           <div className="appHeader__user">
@@ -68,11 +85,11 @@ export default function AdminShell() {
         )}
         <div className="appHeader__actions">
           <button className="button button--icon button--ghost" onClick={refresh} aria-label="רענון" title="רענון"
-            style={{ color: '#fff', border: 'none' }}>
+            style={{ color: '#fff', border: 'none', opacity: .85 }}>
             <RefreshCw size={16} />
           </button>
           <button className="button button--icon button--ghost" onClick={logout} aria-label="יציאה" title="יציאה"
-            style={{ color: '#fff', border: 'none' }}>
+            style={{ color: '#fff', border: 'none', opacity: .85 }}>
             <LogOut size={16} />
           </button>
         </div>
