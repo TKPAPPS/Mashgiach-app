@@ -1,5 +1,30 @@
 # Changelog
 
+## [Patch] — 2026-05-25 — Absence push notification
+
+### What changed
+**File:** `app/api/inspector/absence/route.ts`
+
+Added push notification to admins on new absence request submission, mirroring the existing pattern in `/api/inspector/report/route.ts`.
+
+After a successful insert, the route now:
+1. Fetches the submitting inspector's `full_name` from `profiles`
+2. Calls `POST /api/push/notify` with title "בקשת היעדרות חדשה" and body `"{name} — {type in Hebrew}"`
+3. Wraps the notify call in try/catch — a failed notification never blocks the submission response
+
+The inspector `AbsenceForm` in `app/inspector/page.tsx` already calls this API route (fixed in Phase 1) and was not changed.
+
+### Rule documented
+Updated `CLAUDE.md` with the rule: any inspector form submission that triggers side effects (push, system logs, elevated writes) must go through a backend API route, never a direct client insert.
+
+### Manually tested
+- Submitted a vacation absence request as inspector
+- Confirmed `absence_requests` row created with correct fields
+- Confirmed notify endpoint was reached (verified via server logs and admin push subscription behaviour)
+- Confirmed a failed VAPID config does not break submission (notify endpoint returns `{ skipped }` when unconfigured and the try/catch handles any error)
+
+---
+
 ## [Phase 1] — 2026-05-25 — Core workflow fixes, admin controls, create/edit parity
 
 ### Summary

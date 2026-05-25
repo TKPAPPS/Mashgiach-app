@@ -39,11 +39,26 @@ Inspector API routes authenticate but do NOT check role (inspectors hit `/api/in
 - `gps_mismatch` creates a row in `gps_alerts` (admin-visible, dismissible)
 - The inspector never knows whether they triggered an alert
 
-## Inspector forms — must call API routes
-Inspector forms in `app/inspector/page.tsx` MUST call the backend API routes, not insert directly via the client. Reasons:
-- Direct inserts bypass push notifications
-- Direct inserts have no server-side error handling
-- Current correct pattern: `fetch('/api/inspector/report', ...)` and `fetch('/api/inspector/absence', ...)`
+## Inspector forms — must call API routes for any submission with side effects
+**Rule:** Any inspector form submission that triggers side effects (push notifications, elevated DB writes, system logs) MUST call a backend API route. Never insert directly from the client via `supabase.from(...).insert(...)`.
+
+Reasons:
+- Direct client inserts run as the inspector's anon session — they bypass service-role logic
+- Direct inserts do not trigger push notifications to admins
+- Direct inserts have no server-side error handling; failures are silent to the user
+
+Current correct pattern:
+- Deficiency report → `fetch('/api/inspector/report', { method: 'POST', ... })`
+- Absence request → `fetch('/api/inspector/absence', { method: 'POST', ... })`
+- Exit-form checklist → `fetch('/api/inspector/exit-form', { method: 'POST', ... })` (Phase 2)
+
+**What each API route does beyond insertion:**
+- `/api/inspector/report` — inserts deficiency, then notifies admins via push
+- `/api/inspector/absence` — inserts absence request, then notifies admins via push
+- `/api/inspector/scan` — logs visit, validates GPS, creates gps_alerts if mismatch, logs to system_logs, notifies admins
+- `/api/inspector/exit-form` — batch-inserts visit_checks (Phase 2)
+
+If you add a new inspector-facing form that writes to the DB, add it as an API route if it has any side effect, even if notification is not yet needed.
 
 ## Location create/edit — field scope
 `LocationForm` (module-level component in `LocationsTab.tsx`) now includes all text fields on both create and edit:
@@ -91,8 +106,9 @@ Alerts appear on the admin Dashboard when an inspector scans from > 100m away.
 ## Push notifications
 - VAPID keys in `.env.local`
 - `POST /api/push/notify` sends to all admin subscribers
-- Triggered by: inspector scan (entry/exit), deficiency report
-- NOT yet triggered by: absence requests (Phase 1 gap — absence API doesn't call notify)
+- Triggered by: inspector scan (entry/exit), deficiency report, absence request
+- Notification body for absence: `"{inspector name} — {request type in Hebrew}"`
+- Failed notification calls are swallowed in a try/catch — they never fail the submission
 
 ## Known issues (pending future phases)
 - Contract URLs use `getPublicUrl` on a private bucket — links won't work publicly (Phase 4)

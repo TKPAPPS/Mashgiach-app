@@ -21,5 +21,25 @@ export async function POST(req: NextRequest) {
   })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Notify admins — non-fatal, mirrors the report route pattern
+  try {
+    const typeLabels: Record<string, string> = {
+      vacation: 'חופשה', absence: 'היעדרות', replacement: 'החלפה', other: 'אחר',
+    }
+    const { data: inspector } = await service.from('profiles').select('full_name').eq('id', user.id).single()
+    await fetch(`${req.nextUrl.origin}/api/push/notify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: 'בקשת היעדרות חדשה',
+        body: `${inspector?.full_name ?? ''} — ${typeLabels[request_type] ?? request_type}`,
+        url: '/admin',
+      }),
+    })
+  } catch {
+    // Non-fatal
+  }
+
   return NextResponse.json({ success: true })
 }
