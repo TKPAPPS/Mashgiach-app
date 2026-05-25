@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid payload' }, { status: 400 })
   }
 
-  const service = await createServiceClient()
+  const service = createServiceClient()
 
   const rows = checks.map((c: { checklist_item_id?: string; item_name?: string; note?: string }) => ({
     visit_log_id: visit_log_id ?? null,

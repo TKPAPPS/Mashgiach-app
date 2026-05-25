@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
   const { request_type, start_date, end_date, location_id, replacement_inspector_id, notes } = await req.json()
   if (!request_type) return NextResponse.json({ error: 'Missing request_type' }, { status: 400 })
 
-  const service = await createServiceClient()
+  const service = createServiceClient()
   const { error } = await service.from('absence_requests').insert({
     inspector_id: user.id,
     request_type,

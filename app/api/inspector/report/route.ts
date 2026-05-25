@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
   }
 
-  const service = await createServiceClient()
+  const service = createServiceClient()
   const { error } = await service.from('deficiency_reports').insert({
     inspector_id: user.id,
     location_id,

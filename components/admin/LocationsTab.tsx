@@ -22,11 +22,15 @@ function LocationForm({
   return (
     <form id={formId} onSubmit={onSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <input type="hidden" name="status" value={loc?.status ?? 'active'} />
+
+      {/* Basic info */}
       <div className="fieldRow">
         <label className="field"><span>שם המקום *</span><input name="name" required defaultValue={loc?.name} /></label>
         <label className="field"><span>עיר</span><input name="city" defaultValue={loc?.city ?? ''} /></label>
       </div>
       <label className="field"><span>כתובת</span><input name="address" defaultValue={loc?.address ?? ''} /></label>
+
+      {/* QR code */}
       <label className="field">
         <span>קוד QR *</span>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -35,10 +39,14 @@ function LocationForm({
           <button type="button" className="button button--ghost button--sm" onClick={() => setQr(genQrCode())}>חדש</button>
         </div>
       </label>
+
+      {/* GPS */}
       <div className="fieldRow">
-        <label className="field"><span>קו רוחב — Latitude (GPS)</span><input name="lat" type="number" step="any" defaultValue={loc?.lat ?? ''} placeholder="13.7563" /></label>
-        <label className="field"><span>קו אורך — Longitude (GPS)</span><input name="lng" type="number" step="any" defaultValue={loc?.lng ?? ''} placeholder="100.5018" /></label>
+        <label className="field"><span>קו רוחב — Latitude</span><input name="lat" type="number" step="any" defaultValue={loc?.lat ?? ''} placeholder="13.7563" /></label>
+        <label className="field"><span>קו אורך — Longitude</span><input name="lng" type="number" step="any" defaultValue={loc?.lng ?? ''} placeholder="100.5018" /></label>
       </div>
+
+      {/* Status — edit only */}
       {loc && (
         <label className="field"><span>סטטוס</span>
           <select name="status" defaultValue={loc.status}>
@@ -47,6 +55,21 @@ function LocationForm({
           </select>
         </label>
       )}
+
+      {/* Contact info */}
+      <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '4px 0' }} />
+      <p style={{ fontSize: '.8rem', color: 'var(--muted)', margin: 0 }}>פרטי קשר (אופציונלי)</p>
+      <div className="fieldRow">
+        <label className="field"><span>איש קשר</span><input name="contact_name" defaultValue={loc?.contact_name ?? ''} /></label>
+        <label className="field"><span>טלפון</span><input name="contact_phone" defaultValue={loc?.contact_phone ?? ''} /></label>
+      </div>
+      <label className="field"><span>אימייל</span><input name="contact_email" type="email" defaultValue={loc?.contact_email ?? ''} /></label>
+      <label className="field"><span>הערות קשר</span><textarea name="contact_notes" rows={2} defaultValue={loc?.contact_notes ?? ''} /></label>
+
+      {/* Kashrus procedure */}
+      <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '4px 0' }} />
+      <p style={{ fontSize: '.8rem', color: 'var(--muted)', margin: 0 }}>נוהל כשרות (אופציונלי)</p>
+      <label className="field"><span>נוהל כשרות</span><textarea name="kashrus_procedure" rows={4} defaultValue={loc?.kashrus_procedure ?? ''} /></label>
     </form>
   )
 }
@@ -77,13 +100,18 @@ export default function LocationsTab() {
     setSaving(true)
     const fd = new FormData(e.currentTarget)
     const basePayload = {
-      name:    fd.get('name') as string,
-      city:    (fd.get('city') as string) || null,
-      address: (fd.get('address') as string) || null,
-      qr_code: fd.get('qr_code') as string,
-      lat:     fd.get('lat') ? Number(fd.get('lat')) : null,
-      lng:     fd.get('lng') ? Number(fd.get('lng')) : null,
-      status:  (fd.get('status') as 'active' | 'inactive') ?? 'active',
+      name:               fd.get('name') as string,
+      city:               (fd.get('city') as string) || null,
+      address:            (fd.get('address') as string) || null,
+      qr_code:            fd.get('qr_code') as string,
+      lat:                fd.get('lat') ? Number(fd.get('lat')) : null,
+      lng:                fd.get('lng') ? Number(fd.get('lng')) : null,
+      status:             (fd.get('status') as 'active' | 'inactive') ?? 'active',
+      contact_name:       (fd.get('contact_name') as string) || null,
+      contact_phone:      (fd.get('contact_phone') as string) || null,
+      contact_email:      (fd.get('contact_email') as string) || null,
+      contact_notes:      (fd.get('contact_notes') as string) || null,
+      kashrus_procedure:  (fd.get('kashrus_procedure') as string) || null,
     }
 
     if (editLoc) {
@@ -94,14 +122,12 @@ export default function LocationsTab() {
     } else {
       const { data: created, error } = await supabase.from('locations').insert({
         ...basePayload,
-        contact_name: null, contact_phone: null, contact_email: null,
-        contact_notes: null, kashrus_procedure: null,
-        kashrus_procedure_file_url: null, kashrus_certificate_url: null,
+        kashrus_procedure_file_url: null,
+        kashrus_certificate_url: null,
       }).select().single()
       if (error) { toast('שגיאה ביצירה — בדוק שקוד QR ייחודי', 'error'); setSaving(false); return }
-      toast('המקום נוסף — ניתן להוסיף פרטים נוספים', 'success')
+      toast('המקום נוסף בהצלחה', 'success')
       setAddOpen(false)
-      // Auto-open detail modal so admin can fill contact info, procedure, etc.
       if (created) setDetailLoc(created as Location)
     }
     setSaving(false)
@@ -184,7 +210,7 @@ export default function LocationsTab() {
         footer={<>
           <button className="button button--ghost" onClick={() => setAddOpen(false)}>ביטול</button>
           <button className="button button--primary" type="submit" form="loc-add-form" disabled={saving}>
-            {saving ? <span className="spinner" /> : 'שמור והמשך לפרטים'}
+            {saving ? <span className="spinner" /> : 'שמור מקום'}
           </button>
         </>}>
         {addOpen && <LocationForm formId="loc-add-form" onSubmit={handleSave} />}

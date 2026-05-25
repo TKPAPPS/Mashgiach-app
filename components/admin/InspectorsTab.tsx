@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Plus, Pen, Trash2, Upload, ExternalLink, Eye } from 'lucide-react'
+import { Plus, Pen, Trash2, Upload, ExternalLink, Eye, KeyRound } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import { formatDate } from '@/lib/utils/format'
@@ -18,6 +18,7 @@ export default function InspectorsTab() {
   const [detailInsp, setDetailInsp] = useState<Profile | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [resetInsp, setResetInsp] = useState<Profile | null>(null)
   const [assignedLocs, setAssignedLocs] = useState<Record<string, string[]>>({})
 
   useEffect(() => { loadAll() }, [])
@@ -66,29 +67,34 @@ export default function InspectorsTab() {
     if (!editInsp) return
     setSaving(true)
     const fd = new FormData(e.currentTarget)
-    const newEmail = (fd.get('email') as string).trim()
-    const newPassword = (fd.get('password') as string).trim()
-
     const { error } = await supabase.from('profiles').update({
       full_name: fd.get('full_name') as string,
       start_date: (fd.get('start_date') as string) || null,
       vacation_days_remaining: Number(fd.get('vacation_days') || 0),
     }).eq('id', editInsp.id)
-    if (error) { toast('שגיאה בעדכון פרופיל', 'error'); setSaving(false); return }
-
-    if (newEmail || newPassword) {
-      const res = await fetch('/api/admin/users', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: editInsp.id, email: newEmail || undefined, password: newPassword || undefined }),
-      })
-      const json = await res.json()
-      if (!res.ok) { toast(json.error ?? 'שגיאה בעדכון כניסה', 'error'); setSaving(false); return }
-    }
-
+    if (error) { toast('שגיאה בעדכון', 'error'); setSaving(false); return }
     toast('עודכן בהצלחה', 'success')
     setEditInsp(null)
     loadAll()
+    setSaving(false)
+  }
+
+  async function handleResetCredentials(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    if (!resetInsp) return
+    setSaving(true)
+    const fd = new FormData(e.currentTarget)
+    const email = (fd.get('email') as string).trim()
+    const password = (fd.get('password') as string).trim()
+    if (!email && !password) { toast('יש להזין אימייל או סיסמה חדשים', 'error'); setSaving(false); return }
+    const res = await fetch('/api/admin/users', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: resetInsp.id, email: email || undefined, password: password || undefined }),
+    })
+    const json = await res.json()
+    if (!res.ok) toast(json.error ?? 'שגיאה בעדכון פרטי כניסה', 'error')
+    else { toast('פרטי הכניסה עודכנו בהצלחה', 'success'); setResetInsp(null) }
     setSaving(false)
   }
 
@@ -164,8 +170,10 @@ export default function InspectorsTab() {
                       <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
                         <button className="button button--icon button--ghost" title="פרטים"
                           onClick={() => setDetailInsp(insp)}><Eye size={15} /></button>
-                        <button className="button button--icon button--ghost" title="עריכה"
+                        <button className="button button--icon button--ghost" title="עריכת פרופיל"
                           onClick={() => setEditInsp(insp)}><Pen size={15} /></button>
+                        <button className="button button--icon button--ghost" title="איפוס סיסמה / אימייל"
+                          onClick={() => setResetInsp(insp)}><KeyRound size={15} /></button>
                         <button className="button button--icon button--ghost" title="מחיקה"
                           style={{ color: 'var(--danger)' }} onClick={() => setDeleteId(insp.id)}>
                           <Trash2 size={15} />
@@ -214,8 +222,23 @@ export default function InspectorsTab() {
               <label className="field"><span>תאריך התחלה</span><input name="start_date" type="date" defaultValue={editInsp.start_date ?? ''} /></label>
               <label className="field"><span>ימי חופש</span><input name="vacation_days" type="number" min={0} defaultValue={editInsp.vacation_days_remaining} /></label>
             </div>
-            <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '4px 0' }} />
-            <p style={{ fontSize: '.8rem', color: 'var(--muted)' }}>שנה פרטי כניסה (השאר ריק לאי-שינוי)</p>
+          </form>
+        )}
+      </Modal>
+
+      {/* Reset credentials modal */}
+      <Modal open={!!resetInsp} onClose={() => setResetInsp(null)} title={`פרטי כניסה — ${resetInsp?.full_name ?? ''}`}
+        footer={<>
+          <button className="button button--ghost" onClick={() => setResetInsp(null)}>ביטול</button>
+          <button className="button button--primary" type="submit" form="insp-reset-form" disabled={saving}>
+            {saving ? <span className="spinner" /> : 'עדכן פרטי כניסה'}
+          </button>
+        </>}>
+        {resetInsp && (
+          <form id="insp-reset-form" onSubmit={handleResetCredentials} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <p style={{ fontSize: '.875rem', color: 'var(--muted)' }}>
+              השאר שדה ריק כדי לא לשנות אותו. לפחות אחד מהשדות חייב להיות מלא.
+            </p>
             <label className="field"><span>אימייל חדש</span><input name="email" type="email" placeholder="השאר ריק לאי-שינוי" /></label>
             <label className="field"><span>סיסמה חדשה</span><input name="password" type="password" placeholder="השאר ריק לאי-שינוי" minLength={6} /></label>
           </form>

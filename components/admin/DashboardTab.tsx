@@ -86,13 +86,28 @@ export default function DashboardTab() {
       {alerts.length > 0 && (
         <div className="card" style={{ borderColor: 'var(--warning)', background: 'var(--warning-light)' }}>
           <div className="card__header--inline">
-            <div className="card__title" style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--warning)' }}>
-              <AlertTriangle size={16} /> {alerts.length} התראות GPS חדשות
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <div className="card__title" style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--warning)' }}>
+                <AlertTriangle size={16} /> {alerts.length} חריגות GPS לא מטופלות
+              </div>
+              <p style={{ fontSize: '.78rem', color: 'var(--muted)', margin: 0 }}>
+                המשגיח סרק QR ממרחק העולה על 100 מטר מהמקום — יתכן שינוי מיקום חשוד. סמן כנקרא לאחר בדיקה.
+              </p>
             </div>
+            <button
+              className="button button--ghost button--sm"
+              style={{ flexShrink: 0 }}
+              onClick={async () => {
+                const ids = alerts.map(a => a.id)
+                await supabase.from('gps_alerts').update({ read: true }).in('id', ids)
+                setAlerts([])
+              }}>
+              סמן הכל כנקרא
+            </button>
           </div>
           <div className="tableWrap">
             <table>
-              <thead><tr><th>זמן</th><th>משגיח</th><th>מקום</th><th>פעולה</th><th>מרחק</th><th></th></tr></thead>
+              <thead><tr><th>זמן</th><th>משגיח</th><th>מקום</th><th>פעולה</th><th>מרחק מהמקום</th><th></th></tr></thead>
               <tbody>
                 {alerts.map(a => (
                   <tr key={a.id}>
@@ -100,7 +115,11 @@ export default function DashboardTab() {
                     <td>{(a.inspector as { full_name: string } | undefined)?.full_name ?? '-'}</td>
                     <td>{(a.location as { name: string } | undefined)?.name ?? '-'}</td>
                     <td>{actionLabel(a.action_type ?? '')}</td>
-                    <td>{a.distance_meters ? `${a.distance_meters} מ׳` : '-'}</td>
+                    <td>
+                      <span style={{ fontWeight: 600, color: 'var(--warning)' }}>
+                        {a.distance_meters ? `${a.distance_meters} מ׳` : '-'}
+                      </span>
+                    </td>
                     <td>
                       <button className="button button--ghost button--sm" onClick={async () => {
                         await supabase.from('gps_alerts').update({ read: true }).eq('id', a.id)

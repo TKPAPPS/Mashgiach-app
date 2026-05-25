@@ -21,12 +21,15 @@ export default function InspectorLocationPage({ params }: { params: Promise<{ id
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { router.push('/login'); return }
 
-    const [{ data: loc }, { data: visits }, { data: checklist }] = await Promise.all([
+    const [{ data: loc }, { data: assignment }, { data: visits }, { data: checklist }] = await Promise.all([
       supabase.from('locations').select('*').eq('id', id).single(),
+      supabase.from('inspector_locations').select('id').eq('inspector_id', user.id).eq('location_id', id).maybeSingle(),
       supabase.from('visit_logs').select('*').eq('location_id', id).eq('inspector_id', user.id)
         .order('created_at', { ascending: false }).limit(10),
       supabase.from('checklist_items').select('*').eq('active', true).order('sort_order'),
     ])
+
+    if (!loc || !assignment) { router.push('/inspector'); return }
 
     setLocation(loc as Location)
     setRecentVisits((visits ?? []) as VisitLog[])

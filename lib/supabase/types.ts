@@ -95,6 +95,8 @@ export type DeficiencyReport = {
   location?: Pick<Location, 'id' | 'name' | 'city'>
 }
 
+export type AbsenceAdminStatus = 'pending' | 'approved' | 'denied'
+
 export type AbsenceRequest = {
   id: string
   inspector_id: string
@@ -104,6 +106,8 @@ export type AbsenceRequest = {
   location_id: string | null
   replacement_inspector_id: string | null
   notes: string | null
+  admin_status: AbsenceAdminStatus
+  admin_notes: string | null
   created_at: string
   inspector?: Pick<Profile, 'id' | 'full_name'>
   location?: Pick<Location, 'id' | 'name'>
@@ -152,7 +156,7 @@ export type Database = {
       checklist_items:     TableDef<ChecklistItem, Omit<ChecklistItem,'id'|'created_at'> & { id?: string }, Partial<ChecklistItem>>
       visit_checks:        TableDef<VisitCheck, Omit<VisitCheck,'id'|'created_at'|'inspector'|'location'|'checklist_item'>, Partial<Omit<VisitCheck,'inspector'|'location'|'checklist_item'>>>
       deficiency_reports:  TableDef<DeficiencyReport, Omit<DeficiencyReport,'id'|'created_at'|'updated_at'|'inspector'|'location'>, Partial<Omit<DeficiencyReport,'inspector'|'location'>>>
-      absence_requests:    TableDef<AbsenceRequest, Omit<AbsenceRequest,'id'|'created_at'|'inspector'|'location'|'replacement_inspector'>, Partial<Omit<AbsenceRequest,'inspector'|'location'|'replacement_inspector'>>>
+      absence_requests:    TableDef<AbsenceRequest, Omit<AbsenceRequest,'id'|'created_at'|'inspector'|'location'|'replacement_inspector'> & { admin_status?: AbsenceAdminStatus }, Partial<Omit<AbsenceRequest,'inspector'|'location'|'replacement_inspector'>>>
       system_logs:         TableDef<SystemLog, Omit<SystemLog,'id'|'created_at'|'performer'|'location'>, Partial<Omit<SystemLog,'performer'|'location'>>>
       gps_alerts:          TableDef<GpsAlert, Omit<GpsAlert,'id'|'created_at'|'inspector'|'location'>, Partial<Omit<GpsAlert,'inspector'|'location'>>>
       push_subscriptions:  TableDef<{ id: string; user_id: string; endpoint: string; p256dh: string; auth: string; created_at: string }, { user_id: string; endpoint: string; p256dh: string; auth: string }, { user_id?: string; endpoint?: string; p256dh?: string; auth?: string }>

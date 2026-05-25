@@ -152,28 +152,41 @@ export default function InspectorHome() {
 }
 
 function ReportForm({ profile, locations }: { profile: Profile | null; locations: Location[] }) {
-  const supabase = createClient()
   const [saving, setSaving] = useState(false)
   const [done, setDone] = useState(false)
+  const [error, setError] = useState(false)
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     if (!profile) return
     setSaving(true)
     const fd = new FormData(e.currentTarget)
-    await supabase.from('deficiency_reports').insert({
-      inspector_id: profile.id,
-      location_id: fd.get('location_id') as string,
-      report_type: (fd.get('report_type') as 'deficiency' | 'note') ?? 'deficiency',
-      description: fd.get('description') as string,
-      admin_status: 'open' as const,
-      admin_notes: null,
+    const res = await fetch('/api/inspector/report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        location_id: fd.get('location_id') as string,
+        report_type: fd.get('report_type') as string,
+        description: fd.get('description') as string,
+      }),
     })
     setSaving(false)
+    if (!res.ok) {
+      setError(true)
+      setTimeout(() => setError(false), 4000)
+      return
+    }
     setDone(true)
     setTimeout(() => setDone(false), 3000)
     ;(e.target as HTMLFormElement).reset()
   }
+
+  if (error) return (
+    <div className="card" style={{ textAlign: 'center', padding: 32 }}>
+      <div style={{ color: 'var(--danger)', fontSize: '2rem' }}>✗</div>
+      <div style={{ marginTop: 8, color: 'var(--danger)' }}>שגיאה בשליחה — נסה שנית</div>
+    </div>
+  )
 
   if (done) return (
     <div className="card" style={{ textAlign: 'center', padding: 32 }}>
@@ -210,9 +223,9 @@ function ReportForm({ profile, locations }: { profile: Profile | null; locations
 }
 
 function AbsenceForm({ profile, locations }: { profile: Profile | null; locations: Location[] }) {
-  const supabase = createClient()
   const [saving, setSaving] = useState(false)
   const [done, setDone] = useState(false)
+  const [error, setError] = useState(false)
   const [type, setType] = useState('vacation')
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -220,21 +233,35 @@ function AbsenceForm({ profile, locations }: { profile: Profile | null; location
     if (!profile) return
     setSaving(true)
     const fd = new FormData(e.currentTarget)
-    await supabase.from('absence_requests').insert({
-      inspector_id: profile.id,
-      request_type: (fd.get('request_type') as 'vacation' | 'absence' | 'replacement' | 'other') ?? 'vacation',
-      start_date: (fd.get('start_date') as string) || null,
-      end_date: (fd.get('end_date') as string) || null,
-      location_id: (fd.get('location_id') as string) || null,
-      notes: (fd.get('notes') as string) || null,
-      replacement_inspector_id: null,
+    const res = await fetch('/api/inspector/absence', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        request_type: fd.get('request_type') as string,
+        start_date: (fd.get('start_date') as string) || null,
+        end_date: (fd.get('end_date') as string) || null,
+        location_id: (fd.get('location_id') as string) || null,
+        notes: (fd.get('notes') as string) || null,
+      }),
     })
     setSaving(false)
+    if (!res.ok) {
+      setError(true)
+      setTimeout(() => setError(false), 4000)
+      return
+    }
     setDone(true)
     setTimeout(() => setDone(false), 3000)
     ;(e.target as HTMLFormElement).reset()
     setType('vacation')
   }
+
+  if (error) return (
+    <div className="card" style={{ textAlign: 'center', padding: 32 }}>
+      <div style={{ color: 'var(--danger)', fontSize: '2rem' }}>✗</div>
+      <div style={{ marginTop: 8, color: 'var(--danger)' }}>שגיאה בשליחה — נסה שנית</div>
+    </div>
+  )
 
   if (done) return (
     <div className="card" style={{ textAlign: 'center', padding: 32 }}>
