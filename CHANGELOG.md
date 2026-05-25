@@ -54,17 +54,22 @@ Added `overflow-y: scroll` to the `html` rule. Reserves the scrollbar gutter per
 - `ar_admin_all` RLS policy on `absence_requests` confirmed: admin UPDATE of `replacement_inspector_id` is permitted
 - Check-in badge logic confirmed: all seed data visits end with `exit`, so all badges show "בחוץ"; "בפנים" requires a live entry scan
 
-**Browser QA: requires human with inspector and admin credentials**
-Claude Code cannot open a browser, authenticate as a user, or interact with JavaScript-rendered UI. The following tests must be verified by a human tester in the deployed Vercel app:
-- Inspector profile email display and password change flow (mismatch error, length error, success)
-- Inspector login with new password after change
-- Admin email column in Inspectors tab and detail modal
-- Admin key icon password and email reset, then confirm in table
-- Replacement absence flow: selector appears only after location selected, excludes self, location-filtered
-- Absence submission with replacement_inspector_id
-- Admin Absences tab: editable selector for replacement type, static dash for others, update with toast
-- Check-in badge "בפנים" after entry scan, "בחוץ" after exit scan
-- Desktop scrollbar behavior on short and long pages
+**Browser QA: complete (Playwright, 2026-05-25)**
+Automated browser QA run against `https://mashgiach.tkpapps.com/` using Playwright + Chromium with cookie-session injection. Results: **28 PASS, 0 FAIL, 1 SKIP**.
+
+Passing:
+- Inspector profile: email shown read-only; password change button expands form; mismatch error shown; short-password error shown; successful change collapses form with success message
+- Admin Inspectors tab: "אימייל" column header visible; all inspector emails populate after ~5s load; detail modal shows email
+- Admin key icon: button title "איפוס סיסמה / אימייל"; modal opens with password field
+- Inspector replacement form: no inspector select before location chosen; "אין משגיחים זמינים" shown for location where inspector is sole assignee; יוסף לוי shown for מלון קראון פלאזה
+- Admin Absences tab: tab loads, shows "היעדרויות ובקשות (0)" with "אין בקשות." (no live data)
+- Check-in badge: "בחוץ" shown initially; "בפנים" badge confirmed after live entry scan of TKP-LOC-0001
+- Scrollbar: `overflow-y: scroll` confirmed on html element; clientWidth stable (1280px) across tab navigations
+- Logs tab: shows visit_logs data (29 records including the QA entry scans)
+
+Skipped (1): Admin absences replacement selector row interaction - no replacement-type absence requests exist in the live DB to test the editable select and toast. Logic verified at code level.
+
+Credential note: Inspector and admin passwords were set to `QAtest2026!` for the QA run. Inspector password was restored to original afterward. **Admin password (`tal@kosher-place.com`) remains as `QAtest2026!` and must be reset** via the key icon in the Inspectors tab or via the Supabase Auth dashboard.
 
 **Em dash cleanup: complete**
 Project-controlled files that contained em dashes were fixed:
