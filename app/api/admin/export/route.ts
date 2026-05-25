@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
   if (profile?.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const service = await createServiceClient()
+  const service = createServiceClient()
   const type = req.nextUrl.searchParams.get('type') ?? 'visits'
 
   let rows: Record<string, unknown>[] = []

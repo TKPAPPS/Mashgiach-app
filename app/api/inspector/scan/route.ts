@@ -4,7 +4,7 @@ import { distanceMeters, GPS_THRESHOLD_METERS } from '@/lib/utils/gps'
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
-  const service = await createServiceClient()
+  const service = createServiceClient()
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

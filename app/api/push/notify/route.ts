@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
   webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey)
 
   const { title, body, url } = await req.json()
-  const service = await createServiceClient()
+  const service = createServiceClient()
 
   // Get all admin user IDs
   const { data: admins } = await service.from('profiles').select('id').eq('role', 'admin')
