@@ -7,6 +7,7 @@ import { useToast } from '@/components/ui/Toast'
 import { genQrCode } from '@/lib/utils/format'
 import type { Location } from '@/lib/supabase/types'
 import LocationDetailModal from './LocationDetailModal'
+import { QRCodeSVG } from 'qrcode.react'
 
 // Extracted to module level so React never remounts it on parent re-render
 function LocationForm({
@@ -241,13 +242,17 @@ export default function LocationsTab() {
         {qrLoc && (
           <div style={{ textAlign: 'center', padding: '8px 0' }}>
             <p style={{ color: 'var(--muted)', fontSize: '.875rem', marginBottom: 16 }}>
-              הצג קוד זה למשגיח לסריקה, או הדפס ותלה במקום
+              הדפס ותלה במקום, או הצג למשגיח לסריקה
             </p>
-            <code style={{ fontSize: '2rem', fontFamily: 'monospace', letterSpacing: '.1em',
-              background: 'var(--primary-faint)', padding: '20px 24px', borderRadius: 'var(--radius-lg)',
-              display: 'block', border: '2px solid var(--border)', color: 'var(--primary)', fontWeight: 700 }}>
-              {qrLoc.qr_code}
-            </code>
+            <div style={{ display: 'inline-block', padding: 16, background: '#fff',
+              border: '2px solid var(--border)', borderRadius: 'var(--radius-lg)' }}>
+              <QRCodeSVG value={qrLoc.qr_code} size={220} level="M" />
+            </div>
+            <div style={{ marginTop: 12 }}>
+              <code style={{ fontSize: '.85rem', fontFamily: 'monospace', color: 'var(--muted)' }}>
+                {qrLoc.qr_code}
+              </code>
+            </div>
           </div>
         )}
       </Modal>

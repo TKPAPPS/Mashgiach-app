@@ -77,12 +77,10 @@ export default function AdminShell() {
             <span style={{ fontSize: '.65rem', background: 'var(--gold)', color: '#fff', padding: '2px 7px', borderRadius: 99, fontWeight: 700, flexShrink: 0 }}>DEV</span>
           )}
         </div>
-        {profile && (
-          <div className="appHeader__user">
-            <strong>{profile.full_name}</strong>
-            <span>מנהל</span>
-          </div>
-        )}
+        <div className="appHeader__user" style={{ visibility: profile ? 'visible' : 'hidden' }}>
+          <strong>{profile?.full_name ?? ''}</strong>
+          <span>מנהל</span>
+        </div>
         <div className="appHeader__actions">
           <button className="button button--icon button--ghost" onClick={refresh} aria-label="רענון" title="רענון"
             style={{ color: '#fff', border: 'none', opacity: .85 }}>

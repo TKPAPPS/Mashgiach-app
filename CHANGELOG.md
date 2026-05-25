@@ -1,5 +1,31 @@
 # Changelog
 
+## [Phase 1.5] — 2026-05-25 — QR image, header layout shift, Logs tab
+
+### Bug fixes
+
+#### Bug 1 — QR code modal showed text only, no scannable image
+**File:** `components/admin/LocationsTab.tsx`
+
+Installed `qrcode.react`. The QR icon modal now renders a proper `QRCodeSVG` image (220px, error correction M). The raw text string is preserved below the image for manual entry. Admins can now print or show the QR image to inspectors.
+
+#### Bug 2 — Admin header layout shift on page load
+**File:** `components/admin/AdminShell.tsx`
+
+The user info section (`<div className="appHeader__user">`) was conditionally rendered with `{profile && ...}`. Because `profile` loads asynchronously after mount, the header reflowed when it appeared, pushing the action buttons. Fixed by always rendering the element with `visibility: hidden` until `profile` is loaded — reserves space, no reflow.
+
+#### Bug 3 — Logs tab empty
+**File:** `components/admin/SystemLogsTab.tsx`
+
+Root cause: the Logs tab was reading from `system_logs`, which only receives entries from successful authorized scans (not all scan attempts). The Dashboard reads from `visit_logs`, which receives entries for every scan attempt (including invalid QR codes and unauthorized inspectors). This explains why the Dashboard showed activity while the Logs tab was empty.
+
+Switched the Logs tab to read from `visit_logs` (up to 500 rows, with search filter). The tab now shows the full audit trail: time, action type, inspector, location, city, internal status badge, and GPS distance. `system_logs` continues to be written on successful scans but is not surfaced in the UI.
+
+### Dependency added
+- `qrcode.react@4.2.0`
+
+---
+
 ## [Patch] — 2026-05-25 — Absence push notification
 
 ### What changed

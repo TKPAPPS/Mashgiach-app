@@ -110,6 +110,20 @@ Alerts appear on the admin Dashboard when an inspector scans from > 100m away.
 - Notification body for absence: `"{inspector name} — {request type in Hebrew}"`
 - Failed notification calls are swallowed in a try/catch — they never fail the submission
 
+## QR code display
+- Admin Locations tab: the QR icon button opens a modal with a rendered QR image (`QRCodeSVG` from `qrcode.react`).
+- The QR code value is the location's `qr_code` string (e.g. `LOC-XXXX-XXXX`).
+- The raw text string is also shown below the image for manual entry.
+- Inspector scan page accepts the QR value via camera scan or manual text entry.
+
+## Logs tab (SystemLogsTab)
+- Shows `visit_logs` (all scan attempts: entry, exit, invalid, unauthorized, GPS mismatch).
+- Dashboard shows only the most recent 50 logs; the Logs tab fetches up to 500 with a search filter.
+- `system_logs` table still exists and receives entries from successful authorized scans — it is not shown in the UI currently.
+
+## Admin header
+- The user info section (`appHeader__user`) is always rendered but hidden (`visibility: hidden`) until the profile loads. This reserves space and prevents layout shift on mount.
+
 ## Known issues (pending future phases)
 - Contract URLs use `getPublicUrl` on a private bucket — links won't work publicly (Phase 4)
 - Checklist/exit-form client wiring missing (Phase 2)
