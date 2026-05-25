@@ -173,6 +173,13 @@ Alerts appear on the admin Dashboard when an inspector scans from > 100m away.
 - Derived from `visitMap` already built in `loadAll()`. No additional data fetch needed.
 - "בפנים" = last action was `entry`. "בחוץ" = last action was `exit`, or no visit history.
 
+## QA credential safety rules
+- Do not change real admin or user passwords during QA unless explicitly approved by the user first.
+- Do not paste live passwords or temporary test passwords into chat reports or documentation. Report only that a password was changed, not the value.
+- Prefer purpose-built test accounts for browser QA instead of real admin accounts.
+- If a password must be changed for testing, restore it immediately after the test and confirm restoration.
+- Admin password changes require explicit user approval each time, even in a QA context. Prior approval for one QA run does not carry over.
+
 ## Known lint patterns (future cleanup)
 13+ files use `useEffect(() => { loadFn() }, [])` with an async inner function that calls `setState`. This triggers `react-hooks/exhaustive-deps` warnings. The pattern is intentional (load-once on mount). Fixing all instances requires systematic `useCallback` or `.then()` refactoring across the codebase. Deferred to a dedicated future cleanup phase. Do not fix as part of feature work unless the file is already being substantially rewritten.
 

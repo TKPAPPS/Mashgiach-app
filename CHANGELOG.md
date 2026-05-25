@@ -69,7 +69,7 @@ Passing:
 
 Skipped (1): Admin absences replacement selector row interaction - no replacement-type absence requests exist in the live DB to test the editable select and toast. Logic verified at code level.
 
-Credential note: Inspector and admin passwords were set to `QAtest2026!` for the QA run. Inspector password was restored to original afterward. **Admin password (`tal@kosher-place.com`) remains as `QAtest2026!` and must be reset** via the key icon in the Inspectors tab or via the Supabase Auth dashboard.
+Credential note: Inspector and admin passwords were temporarily changed for the QA run. Inspector password was restored afterward. Admin password (`tal@kosher-place.com`) was changed and must be reset by the account owner via the key icon in the Inspectors tab or the Supabase Auth dashboard.
 
 **Em dash cleanup: complete**
 Project-controlled files that contained em dashes were fixed:
