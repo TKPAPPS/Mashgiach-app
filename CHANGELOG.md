@@ -1,5 +1,82 @@
 # Changelog
 
+## [Phase 4]: 2026-05-26: Contract signed URLs, deficiency notes, date filters, inactive locations, checklist grouping
+
+### Phase 4 summary
+
+9 items implemented. No DB migrations required. Build: clean. TypeScript: clean. Em dash audit: clean.
+
+#### Item 1: Contract signed URLs
+**Files:** `app/api/admin/contract-url/route.ts` (new), `app/api/inspector/contract-url/route.ts` (new), `components/admin/InspectorsTab.tsx`, `app/inspector/page.tsx`
+
+The `contracts` bucket is private. Previous code called `getPublicUrl`, which returns 403 for private buckets. Fixed by:
+- On upload: store the raw storage path (`contracts/<id>/file.pdf`) in `profiles.contract_url` instead of the broken public URL.
+- On view: call the new API routes to generate a 1-hour signed URL, then open it in a new tab.
+- Admin route (`GET /api/admin/contract-url?inspector_id=X`): verifies admin role, fetches inspector profile, generates signed URL.
+- Inspector route (`GET /api/inspector/contract-url`): uses the authenticated user's own ID only; no inspector can access another's contract.
+- Both routes handle both raw path format and any previously stored public URL format (path extracted from URL pattern).
+- Contract "צפה" / "פתח" buttons now show a spinner while the signed URL is being fetched.
+
+#### Item 2: Deficiency admin notes: controlled input + save button
+**Files:** `components/admin/DeficienciesTab.tsx`, `components/admin/LocationDetailModal.tsx`
+
+Replaced `defaultValue` + `onBlur` pattern with controlled `editingNotes` state. A "שמור" save button appears inline only when the current input value differs from the stored value. Prevents data loss when navigating between tabs. Same pattern already used in `AbsencesTab`.
+
+#### Item 3: Deficiencies date filter
+**File:** `components/admin/DeficienciesTab.tsx`
+
+Added `from` / `to` date inputs to the filter section. Server-side 30-day default (see item 7).
+
+#### Item 4: Deficiency admin notes in LocationDetailModal
+**File:** `components/admin/LocationDetailModal.tsx`
+
+Added "הערות מנהל" column to the deficiencies tab inside the location detail modal. Uses the same controlled-input + save-button pattern as the standalone DeficienciesTab.
+
+#### Item 5: Checklist grouping in LocationDetailModal
+**File:** `components/admin/LocationDetailModal.tsx`
+
+The "בדיקות" tab now groups `visit_checks` by `visit_log_id`. Each group renders as a card with a shared header (date, inspector name) and a table of items/notes for that visit. Fetch limit raised from 20 to 100.
+
+#### Item 6: SystemLogsTab filters
+**File:** `components/admin/SystemLogsTab.tsx`
+
+Added `from` date, `to` date, and action type (כניסה/יציאה) filter fields. Text search preserved. "טען" button re-fetches from the server with the current `from` date. 30-day server-side default (see item 7).
+
+#### Item 7: 30-day default window for Reports and Logs
+**Files:** `components/admin/ReportsTab.tsx`, `components/admin/SystemLogsTab.tsx`, `components/admin/DeficienciesTab.tsx`
+
+All three tabs now default `from` to 30 days ago and apply it server-side (`.gte('created_at', fromDate)`). A "טען" button re-fetches when the user changes the date range. A Hebrew hint note explains the default and how to expand the window. Client-side filters (inspector, location, action, `to` date, search text) still apply within the loaded window without a round-trip.
+
+#### Item 8: Inactive locations: non-interactive on inspector home
+**File:** `app/inspector/page.tsx`
+
+Inactive assigned locations are now shown at 55% opacity with `cursor: default`. No click handler, no scan button, no check-in badge. Only the "לא פעיל" badge is shown. Active locations are unchanged.
+
+#### Item 9: UI consistency
+**File:** `components/admin/DeficienciesTab.tsx`
+
+Column header renamed from "הערות" to "הערות מנהל" for consistency with other tabs and the Excel export column name.
+
+### Verification
+
+- Build: clean
+- TypeScript: clean
+- Em dash audit on all 8 changed files: clean
+- No DB migrations required
+
+### Manual QA required (pending browser verification)
+
+1. Upload a contract for an inspector: confirm `profiles.contract_url` stores a raw path, not a URL.
+2. Click "צפה" (contract) in InspectorsTab table row: confirm signed URL opens.
+3. Click "פתח" in inspector detail modal: confirm signed URL opens.
+4. Open inspector profile tab as inspector: click "צפה בחוזה": confirm signed URL opens.
+5. Deficiency notes: edit a note, navigate away without saving: confirm value is not saved. Edit and click "שמור": confirm saved.
+6. Deficiencies date filter: change from date to older, click "טען": confirm older records load.
+7. LocationDetailModal checks tab: confirm grouped by visit, shared header visible.
+8. Inactive assigned location on inspector home: confirm card is non-interactive, no scan button, "לא פעיל" badge only.
+
+---
+
 ## [Phase 3]: 2026-05-25: Inspector profile, admin email, replacement inspector, check-in badge, scrollbar fix
 
 ### Phase 3 summary

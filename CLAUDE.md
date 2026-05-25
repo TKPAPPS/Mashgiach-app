@@ -114,9 +114,37 @@ Fields that require the record ID and stay in `LocationDetailModal` only:
 - Credentials and profile are deliberately separated to reduce accidental changes
 
 ## Storage buckets
-- `contracts`: private; stores inspector employment contracts; URLs generated with `createSignedUrl` (TODO: currently uses getPublicUrl; see known issue below)
+- `contracts`: private; stores inspector employment contracts; URLs are generated on demand via signed URLs (1-hour expiry)
 - `certificates`: public; stores kosher certificates for locations
 - `kashrus-procedures`: private
+
+## Contract URL handling
+- `profiles.contract_url` stores the raw storage path (e.g. `contracts/<inspector-id>/file.pdf`), NOT a public URL.
+- Admin contract view: `GET /api/admin/contract-url?inspector_id=X` verifies admin role, generates a signed URL, returns `{ url }`. Opens in new tab.
+- Inspector contract view: `GET /api/inspector/contract-url` uses the authenticated user's own profile; inspector cannot fetch another inspector's contract.
+- Both routes handle both raw paths and legacy public URL format (extracts path from URL pattern) to support any rows that may have been stored differently.
+- Do NOT call `getPublicUrl` on the `contracts` bucket; it is private and will 403.
+
+## Reports and Logs: 30-day default window
+- `ReportsTab` and `SystemLogsTab` both default to fetching the last 30 days server-side (`.gte('created_at', thirtyDaysAgo)`).
+- The `from` filter state is initialized to 30 days ago. An explicit "טען" button re-fetches from the server with the current `from` date.
+- A Hebrew hint note is shown below the filter row: to view older data, change the start date and click "טען".
+- Client-side filters (inspector, location, action, `to` date, search) still apply to the loaded window without a re-fetch.
+
+## Inactive locations on inspector home
+- Inspectors see their inactive assigned locations but they are non-interactive: no click navigation, no scan button, no check-in badge.
+- The card is rendered at 55% opacity with `cursor: default`.
+- Only the "לא פעיל" badge is shown; the "בפנים"/"בחוץ" badge is hidden for inactive cards.
+
+## Checklist grouping in LocationDetailModal
+- The "בדיקות" (checks) tab groups `visit_checks` by `visit_log_id`.
+- Each group is rendered as a card with a shared header showing date and inspector name.
+- Fetch limit is 100 rows (was 20).
+
+## Deficiency admin notes
+- `DeficienciesTab` and `LocationDetailModal` deficiencies tab both use controlled input state for `admin_notes`.
+- A "שמור" button appears inline only when the value has changed from the stored value (dirty check).
+- The `onBlur`-based pattern has been removed to prevent data loss on tab navigation.
 
 ## GPS alert lifecycle
 Alerts appear on the admin Dashboard when an inspector scans from > 100m away.
@@ -184,5 +212,4 @@ Alerts appear on the admin Dashboard when an inspector scans from > 100m away.
 13+ files use `useEffect(() => { loadFn() }, [])` with an async inner function that calls `setState`. This triggers `react-hooks/exhaustive-deps` warnings. The pattern is intentional (load-once on mount). Fixing all instances requires systematic `useCallback` or `.then()` refactoring across the codebase. Deferred to a dedicated future cleanup phase. Do not fix as part of feature work unless the file is already being substantially rewritten.
 
 ## Known issues (pending future phases)
-- Contract URLs use `getPublicUrl` on a private bucket; links won't work publicly (Phase 4)
 - `kashrus_procedure_file_url` field exists in schema but is not wired anywhere in UI
