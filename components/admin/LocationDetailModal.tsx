@@ -1,0 +1,279 @@
+'use client'
+import { useState, useEffect } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import Modal from '@/components/ui/Modal'
+import { useToast } from '@/components/ui/Toast'
+import { formatDateTime } from '@/lib/utils/format'
+import type { Location, VisitLog, DeficiencyReport, VisitCheck, Profile } from '@/lib/supabase/types'
+import { Upload, Trash2, ExternalLink } from 'lucide-react'
+
+type InnerTab = 'info' | 'kashrus' | 'certificate' | 'inspectors' | 'deficiencies' | 'checks' | 'visits'
+
+export default function LocationDetailModal({ loc, onClose }: { loc: Location; onClose: () => void }) {
+  const supabase = createClient()
+  const { toast } = useToast()
+  const [tab, setTab] = useState<InnerTab>('info')
+  const [location, setLocation] = useState<Location>(loc)
+  const [visits, setVisits] = useState<VisitLog[]>([])
+  const [deficiencies, setDeficiencies] = useState<DeficiencyReport[]>([])
+  const [checks, setChecks] = useState<VisitCheck[]>([])
+  const [assignedInspectors, setAssignedInspectors] = useState<Profile[]>([])
+  const [allInspectors, setAllInspectors] = useState<Profile[]>([])
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => { loadAll() }, [])
+
+  async function loadAll() {
+    const [{ data: v }, { data: d }, { data: c }, { data: ai }, { data: all }] = await Promise.all([
+      supabase.from('visit_logs').select('*, inspector:profiles(id,full_name)').eq('location_id', loc.id).order('created_at', { ascending: false }).limit(20),
+      supabase.from('deficiency_reports').select('*, inspector:profiles(id,full_name)').eq('location_id', loc.id).order('created_at', { ascending: false }),
+      supabase.from('visit_checks').select('*, inspector:profiles(id,full_name)').eq('location_id', loc.id).order('created_at', { ascending: false }).limit(20),
+      supabase.from('inspector_locations').select('inspector:profiles(*)').eq('location_id', loc.id),
+      supabase.from('profiles').select('*').eq('role', 'mashgiach').order('full_name'),
+    ])
+    setVisits((v ?? []) as VisitLog[])
+    setDeficiencies((d ?? []) as DeficiencyReport[])
+    setChecks((c ?? []) as VisitCheck[])
+    const inspList = (ai ?? []).map((r: { inspector: unknown }) => r.inspector as Profile)
+    setAssignedInspectors(inspList)
+    setAllInspectors((all ?? []) as Profile[])
+  }
+
+  async function saveInfo(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    setSaving(true)
+    const fd = new FormData(e.currentTarget)
+    const { error, data } = await supabase.from('locations').update({
+      contact_name:  fd.get('contact_name') as string,
+      contact_phone: fd.get('contact_phone') as string,
+      contact_email: fd.get('contact_email') as string,
+      contact_notes: fd.get('contact_notes') as string,
+    }).eq('id', loc.id).select().single()
+    if (error) toast('שגיאה בשמירה', 'error')
+    else { toast('נשמר', 'success'); setLocation(data as Location) }
+    setSaving(false)
+  }
+
+  async function saveKashrus(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    setSaving(true)
+    const fd = new FormData(e.currentTarget)
+    const { error, data } = await supabase.from('locations').update({
+      kashrus_procedure: fd.get('kashrus_procedure') as string,
+    }).eq('id', loc.id).select().single()
+    if (error) toast('שגיאה', 'error')
+    else { toast('נוהל כשרות נשמר', 'success'); setLocation(data as Location) }
+    setSaving(false)
+  }
+
+  async function uploadCertificate(file: File) {
+    const path = `certificates/${loc.id}/${file.name}`
+    const { error: upErr } = await supabase.storage.from('certificates').upload(path, file, { upsert: true })
+    if (upErr) { toast('שגיאה בהעלאה', 'error'); return }
+    const { data: { publicUrl } } = supabase.storage.from('certificates').getPublicUrl(path)
+    await supabase.from('locations').update({ kashrus_certificate_url: publicUrl }).eq('id', loc.id)
+    setLocation(l => ({ ...l, kashrus_certificate_url: publicUrl }))
+    toast('תעודה הועלתה', 'success')
+  }
+
+  async function deleteCertificate() {
+    await supabase.from('locations').update({ kashrus_certificate_url: null }).eq('id', loc.id)
+    setLocation(l => ({ ...l, kashrus_certificate_url: null }))
+    toast('תעודה נמחקה', 'success')
+  }
+
+  async function toggleAssign(inspector: Profile) {
+    const isAssigned = assignedInspectors.some(i => i.id === inspector.id)
+    if (isAssigned) {
+      await supabase.from('inspector_locations').delete()
+        .eq('inspector_id', inspector.id).eq('location_id', loc.id)
+      setAssignedInspectors(prev => prev.filter(i => i.id !== inspector.id))
+    } else {
+      await supabase.from('inspector_locations').insert({ inspector_id: inspector.id, location_id: loc.id })
+      setAssignedInspectors(prev => [...prev, inspector])
+    }
+  }
+
+  async function updateDeficiencyStatus(id: string, status: string) {
+    await supabase.from('deficiency_reports').update({ admin_status: status as 'open' | 'in_progress' | 'resolved' }).eq('id', id)
+    setDeficiencies(prev => prev.map(d => d.id === id ? { ...d, admin_status: status as DeficiencyReport['admin_status'] } : d))
+  }
+
+  const INNER_TABS: { id: InnerTab; label: string }[] = [
+    { id: 'info',         label: 'פרטי קשר' },
+    { id: 'kashrus',      label: 'נוהל כשרות' },
+    { id: 'certificate',  label: 'תעודת כשרות' },
+    { id: 'inspectors',   label: 'משגיחים' },
+    { id: 'deficiencies', label: 'ליקויים' },
+    { id: 'checks',       label: 'בדיקות' },
+    { id: 'visits',       label: 'כניסות/יציאות' },
+  ]
+
+  return (
+    <Modal open onClose={onClose} title={`${loc.name} — ${loc.city ?? ''}`} size="xl">
+      <div className="innerTabs">
+        {INNER_TABS.map(t => (
+          <button key={t.id} className={`innerTab${tab === t.id ? ' innerTab--active' : ''}`}
+            onClick={() => setTab(t.id)} type="button">{t.label}</button>
+        ))}
+      </div>
+
+      {/* Contact info */}
+      {tab === 'info' && (
+        <form onSubmit={saveInfo} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div className="fieldRow">
+            <label className="field"><span>איש קשר</span><input name="contact_name" defaultValue={location.contact_name ?? ''} /></label>
+            <label className="field"><span>טלפון</span><input name="contact_phone" defaultValue={location.contact_phone ?? ''} /></label>
+          </div>
+          <label className="field"><span>אימייל</span><input name="contact_email" type="email" defaultValue={location.contact_email ?? ''} /></label>
+          <label className="field"><span>הערות קשר</span><textarea name="contact_notes" defaultValue={location.contact_notes ?? ''} /></label>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button className="button button--primary" type="submit" disabled={saving}>שמור</button>
+          </div>
+        </form>
+      )}
+
+      {/* Kashrus procedure */}
+      {tab === 'kashrus' && (
+        <form onSubmit={saveKashrus} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <label className="field">
+            <span>נוהל כשרות (טקסט חופשי)</span>
+            <textarea name="kashrus_procedure" rows={10} defaultValue={location.kashrus_procedure ?? ''} />
+          </label>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button className="button button--primary" type="submit" disabled={saving}>שמור נוהל</button>
+          </div>
+        </form>
+      )}
+
+      {/* Certificate */}
+      {tab === 'certificate' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {location.kashrus_certificate_url ? (
+            <div>
+              <div className="filePreview">
+                <span>תעודת כשרות קיימת</span>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <a href={location.kashrus_certificate_url} target="_blank" rel="noreferrer"
+                    className="button button--ghost button--sm">
+                    <ExternalLink size={14} /> צפה
+                  </a>
+                  <button className="button button--ghost button--sm" style={{ color: 'var(--danger)' }}
+                    onClick={deleteCertificate}><Trash2 size={14} /> מחק</button>
+                </div>
+              </div>
+              <p style={{ fontSize: '.8rem', color: 'var(--muted)', marginTop: 8 }}>להחלפה, העלה קובץ חדש:</p>
+            </div>
+          ) : null}
+          <label className="fileUpload">
+            <div className="fileUpload__area">
+              <Upload size={20} style={{ margin: '0 auto 6px' }} />
+              <div>לחץ להעלאת תעודת כשרות</div>
+              <div style={{ fontSize: '.78rem' }}>תמונה או PDF</div>
+              <input type="file" accept="image/*,.pdf" style={{ display: 'none' }}
+                onChange={e => { if (e.target.files?.[0]) uploadCertificate(e.target.files[0]) }} />
+            </div>
+          </label>
+        </div>
+      )}
+
+      {/* Inspectors assignment */}
+      {tab === 'inspectors' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <p className="textSm textMuted">לחץ על שם משגיח לשיוך/הסרה</p>
+          {allInspectors.map(insp => {
+            const assigned = assignedInspectors.some(i => i.id === insp.id)
+            return (
+              <div key={insp.id}
+                className={`checklistAdminItem${assigned ? '' : ' checklistAdminItem--inactive'}`}
+                style={{ cursor: 'pointer' }}
+                onClick={() => toggleAssign(insp)}>
+                <input type="checkbox" readOnly checked={assigned} style={{ accentColor: 'var(--primary)' }} />
+                <span className="checklistAdminItem__name">{insp.full_name}</span>
+                {assigned && <span className="badge badge--success">משויך</span>}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Deficiencies */}
+      {tab === 'deficiencies' && (
+        <div className="tableWrap">
+          {deficiencies.length === 0 ? <div className="emptyState">אין ליקויים.</div> :
+          <table>
+            <thead><tr><th>תאריך</th><th>משגיח</th><th>סוג</th><th>פירוט</th><th>סטטוס</th></tr></thead>
+            <tbody>
+              {deficiencies.map(d => (
+                <tr key={d.id}>
+                  <td className="noWrap">{formatDateTime(d.created_at)}</td>
+                  <td>{(d.inspector as { full_name: string } | undefined)?.full_name ?? '-'}</td>
+                  <td>{d.report_type === 'deficiency' ? 'ליקוי' : 'הערה'}</td>
+                  <td>{d.description}</td>
+                  <td>
+                    <select value={d.admin_status}
+                      onChange={e => updateDeficiencyStatus(d.id, e.target.value)}
+                      style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '3px 6px', fontSize: '.8rem' }}>
+                      <option value="open">פתוח</option>
+                      <option value="in_progress">בטיפול</option>
+                      <option value="resolved">טופל</option>
+                    </select>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>}
+        </div>
+      )}
+
+      {/* Checks */}
+      {tab === 'checks' && (
+        <div className="tableWrap">
+          {checks.length === 0 ? <div className="emptyState">אין בדיקות.</div> :
+          <table>
+            <thead><tr><th>תאריך</th><th>משגיח</th><th>בדיקה</th><th>הערה</th></tr></thead>
+            <tbody>
+              {checks.map(c => (
+                <tr key={c.id}>
+                  <td className="noWrap">{formatDateTime(c.created_at)}</td>
+                  <td>{(c.inspector as { full_name: string } | undefined)?.full_name ?? '-'}</td>
+                  <td>{c.item_name ?? '-'}</td>
+                  <td>{c.note ?? <span className="mutedCell">-</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>}
+        </div>
+      )}
+
+      {/* Visits */}
+      {tab === 'visits' && (
+        <div className="tableWrap">
+          {visits.length === 0 ? <div className="emptyState">אין כניסות/יציאות.</div> :
+          <table>
+            <thead><tr><th>תאריך</th><th>פעולה</th><th>משגיח</th><th>סטטוס</th><th>GPS</th></tr></thead>
+            <tbody>
+              {visits.map(v => (
+                <tr key={v.id}>
+                  <td className="noWrap">{formatDateTime(v.created_at)}</td>
+                  <td>{v.action_type === 'entry' ? 'כניסה' : 'יציאה'}</td>
+                  <td>{(v.inspector as { full_name: string } | undefined)?.full_name ?? '-'}</td>
+                  <td><span className={`badge ${v.internal_status === 'success' ? 'badge--success' : 'badge--warning'}`}>
+                    {v.internal_status === 'success' ? 'הצלחה' : v.internal_status}
+                  </span></td>
+                  <td>
+                    {v.device_lat && v.device_lng
+                      ? <a className="coordsLink" href={`https://maps.google.com/?q=${v.device_lat},${v.device_lng}`} target="_blank" rel="noreferrer">
+                          {v.device_lat.toFixed(4)}, {v.device_lng.toFixed(4)}
+                        </a>
+                      : <span className="mutedCell">-</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>}
+        </div>
+      )}
+    </Modal>
+  )
+}
