@@ -128,12 +128,20 @@ export async function POST(req: NextRequest) {
     // Non-fatal
   }
 
-  // Always return generic success to inspector; include visit_log_id so scan page can redirect to checklist
+  // Check active checklist items server-side so the scan page can redirect without a second round-trip
+  let has_checklist = false
+  if (action_type === 'exit') {
+    const { count } = await service.from('checklist_items').select('*', { count: 'exact', head: true }).eq('active', true)
+    has_checklist = (count ?? 0) > 0
+  }
+
+  // Always return generic success to inspector; include has_checklist and visit_log_id for exit redirect
   return NextResponse.json({
     success: true,
     action_type,
     location_name: location.name,
     location_id: location.id,
     visit_log_id: visitLog?.id ?? null,
+    has_checklist,
   })
 }
