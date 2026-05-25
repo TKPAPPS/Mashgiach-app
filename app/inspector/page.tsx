@@ -85,37 +85,41 @@ export default function InspectorHome() {
               ? <div className="emptyState">לא שויכת למקומות עדיין.</div>
               : locations.map(loc => {
                 const isInside = loc.lastVisit?.action_type === 'entry'
+                const isInactive = loc.status !== 'active'
                 return (
                   <div key={loc.id} className="locationCard"
-                    onClick={() => router.push(`/inspector/location/${loc.id}`)}>
+                    style={isInactive ? { opacity: 0.55, cursor: 'default' } : undefined}
+                    onClick={isInactive ? undefined : () => router.push(`/inspector/location/${loc.id}`)}>
                     <div className="locationCard__header">
                       <div className="locationCard__name">
-                        <MapPin size={15} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                        <MapPin size={15} style={{ color: isInactive ? 'var(--muted)' : 'var(--primary)', flexShrink: 0 }} />
                         {loc.name}
                       </div>
                       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                        <span className={`badge ${isInside ? 'badge--success' : 'badge--muted'}`}>
-                          {isInside ? 'בפנים' : 'בחוץ'}
-                        </span>
-                        <span className={`badge ${loc.status === 'active' ? 'badge--success' : 'badge--muted'}`}>
-                          {loc.status === 'active' ? 'פעיל' : 'לא פעיל'}
-                        </span>
+                        {isInactive
+                          ? <span className="badge badge--muted">לא פעיל</span>
+                          : <span className={`badge ${isInside ? 'badge--success' : 'badge--muted'}`}>
+                              {isInside ? 'בפנים' : 'בחוץ'}
+                            </span>
+                        }
                       </div>
                     </div>
                     {loc.city && <div className="locationCard__city">{loc.city}</div>}
                     {loc.address && <div className="locationCard__address">{loc.address}</div>}
-                    {loc.lastVisit && (
+                    {!isInactive && loc.lastVisit && (
                       <div className="locationCard__lastVisit">
                         ביקור אחרון: {formatRelative(loc.lastVisit.created_at)} •{' '}
                         {loc.lastVisit.action_type === 'entry' ? 'כניסה' : 'יציאה'}
                       </div>
                     )}
-                    <button
-                      className="button button--primary"
-                      style={{ marginTop: 10, width: '100%' }}
-                      onClick={e => { e.stopPropagation(); router.push('/inspector/scan') }}>
-                      <QrCode size={15} /> סרוק QR
-                    </button>
+                    {!isInactive && (
+                      <button
+                        className="button button--primary"
+                        style={{ marginTop: 10, width: '100%' }}
+                        onClick={e => { e.stopPropagation(); router.push('/inspector/scan') }}>
+                        <QrCode size={15} /> סרוק QR
+                      </button>
+                    )}
                   </div>
                 )
               })
@@ -369,6 +373,19 @@ function AbsenceForm({ profile, locations }: { profile: Profile | null; location
 function ProfileView({ profile, email }: { profile: Profile; email: string | null }) {
   const supabase = createClient()
   const [pwOpen, setPwOpen] = useState(false)
+  const [contractLoading, setContractLoading] = useState(false)
+
+  async function openContract() {
+    setContractLoading(true)
+    try {
+      const res = await fetch('/api/inspector/contract-url')
+      if (!res.ok) return
+      const { url } = await res.json()
+      window.open(url, '_blank', 'noreferrer')
+    } finally {
+      setContractLoading(false)
+    }
+  }
   const [newPw, setNewPw] = useState('')
   const [confirmPw, setConfirmPw] = useState('')
   const [pwSaving, setPwSaving] = useState(false)
@@ -417,10 +434,10 @@ function ProfileView({ profile, email }: { profile: Profile; email: string | nul
         </div>
       </div>
       {profile.contract_url && (
-        <a href={profile.contract_url} target="_blank" rel="noreferrer"
-          className="button button--ghost" style={{ marginTop: 16 }}>
-          צפה בחוזה
-        </a>
+        <button className="button button--ghost" style={{ marginTop: 16 }}
+          onClick={openContract} disabled={contractLoading}>
+          {contractLoading ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'צפה בחוזה'}
+        </button>
       )}
 
       <div style={{ marginTop: 20, width: '100%' }}>

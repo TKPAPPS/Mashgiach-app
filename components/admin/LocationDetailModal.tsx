@@ -20,6 +20,8 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
   const [assignedInspectors, setAssignedInspectors] = useState<Profile[]>([])
   const [allInspectors, setAllInspectors] = useState<Profile[]>([])
   const [saving, setSaving] = useState(false)
+  const [editingDefNotes, setEditingDefNotes] = useState<Record<string, string>>({})
+  const [savingDefNotes, setSavingDefNotes] = useState<Record<string, boolean>>({})
 
   useEffect(() => { loadAll() }, [])
 
@@ -27,7 +29,7 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
     const [{ data: v }, { data: d }, { data: c }, { data: ai }, { data: all }] = await Promise.all([
       supabase.from('visit_logs').select('*, inspector:profiles(id,full_name)').eq('location_id', loc.id).order('created_at', { ascending: false }).limit(20),
       supabase.from('deficiency_reports').select('*, inspector:profiles(id,full_name)').eq('location_id', loc.id).order('created_at', { ascending: false }),
-      supabase.from('visit_checks').select('*, inspector:profiles(id,full_name)').eq('location_id', loc.id).order('created_at', { ascending: false }).limit(20),
+      supabase.from('visit_checks').select('*, inspector:profiles(id,full_name)').eq('location_id', loc.id).order('created_at', { ascending: false }).limit(100),
       supabase.from('inspector_locations').select('inspector:profiles(*)').eq('location_id', loc.id),
       supabase.from('profiles').select('*').eq('role', 'mashgiach').order('full_name'),
     ])
@@ -97,6 +99,15 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
   async function updateDeficiencyStatus(id: string, status: string) {
     await supabase.from('deficiency_reports').update({ admin_status: status as 'open' | 'in_progress' | 'resolved' }).eq('id', id)
     setDeficiencies(prev => prev.map(d => d.id === id ? { ...d, admin_status: status as DeficiencyReport['admin_status'] } : d))
+  }
+
+  async function saveDefNotes(id: string) {
+    const value = editingDefNotes[id] ?? ''
+    setSavingDefNotes(prev => ({ ...prev, [id]: true }))
+    await supabase.from('deficiency_reports').update({ admin_notes: value }).eq('id', id)
+    setDeficiencies(prev => prev.map(d => d.id === id ? { ...d, admin_notes: value } : d))
+    setEditingDefNotes(prev => { const n = { ...prev }; delete n[id]; return n })
+    setSavingDefNotes(prev => ({ ...prev, [id]: false }))
   }
 
   const INNER_TABS: { id: InnerTab; label: string }[] = [
@@ -202,25 +213,47 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
         <div className="tableWrap">
           {deficiencies.length === 0 ? <div className="emptyState">אין ליקויים.</div> :
           <table>
-            <thead><tr><th>תאריך</th><th>משגיח</th><th>סוג</th><th>פירוט</th><th>סטטוס</th></tr></thead>
+            <thead><tr><th>תאריך</th><th>משגיח</th><th>סוג</th><th>פירוט</th><th>סטטוס</th><th>הערות מנהל</th></tr></thead>
             <tbody>
-              {deficiencies.map(d => (
-                <tr key={d.id}>
-                  <td className="noWrap">{formatDateTime(d.created_at)}</td>
-                  <td>{(d.inspector as { full_name: string } | undefined)?.full_name ?? '-'}</td>
-                  <td>{d.report_type === 'deficiency' ? 'ליקוי' : 'הערה'}</td>
-                  <td>{d.description}</td>
-                  <td>
-                    <select value={d.admin_status}
-                      onChange={e => updateDeficiencyStatus(d.id, e.target.value)}
-                      style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '3px 6px', fontSize: '.8rem' }}>
-                      <option value="open">פתוח</option>
-                      <option value="in_progress">בטיפול</option>
-                      <option value="resolved">טופל</option>
-                    </select>
-                  </td>
-                </tr>
-              ))}
+              {deficiencies.map(d => {
+                const noteValue = d.id in editingDefNotes ? editingDefNotes[d.id] : (d.admin_notes ?? '')
+                const isDirty = d.id in editingDefNotes && editingDefNotes[d.id] !== (d.admin_notes ?? '')
+                return (
+                  <tr key={d.id}>
+                    <td className="noWrap">{formatDateTime(d.created_at)}</td>
+                    <td>{(d.inspector as { full_name: string } | undefined)?.full_name ?? '-'}</td>
+                    <td>{d.report_type === 'deficiency' ? 'ליקוי' : 'הערה'}</td>
+                    <td>{d.description}</td>
+                    <td>
+                      <select value={d.admin_status}
+                        onChange={e => updateDeficiencyStatus(d.id, e.target.value)}
+                        style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '3px 6px', fontSize: '.8rem' }}>
+                        <option value="open">פתוח</option>
+                        <option value="in_progress">בטיפול</option>
+                        <option value="resolved">טופל</option>
+                      </select>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                        <input
+                          value={noteValue}
+                          placeholder="הוסף הערה..."
+                          onChange={e => setEditingDefNotes(prev => ({ ...prev, [d.id]: e.target.value }))}
+                          style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '3px 8px', fontSize: '.82rem', width: 120 }}
+                        />
+                        {isDirty && (
+                          <button
+                            className="button button--primary button--sm"
+                            onClick={() => saveDefNotes(d.id)}
+                            disabled={savingDefNotes[d.id]}>
+                            {savingDefNotes[d.id] ? <span className="spinner" style={{ width: 10, height: 10 }} /> : 'שמור'}
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>}
         </div>
@@ -228,21 +261,44 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
 
       {/* Checks */}
       {tab === 'checks' && (
-        <div className="tableWrap">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {checks.length === 0 ? <div className="emptyState">אין בדיקות.</div> :
-          <table>
-            <thead><tr><th>תאריך</th><th>משגיח</th><th>בדיקה</th><th>הערה</th></tr></thead>
-            <tbody>
-              {checks.map(c => (
-                <tr key={c.id}>
-                  <td className="noWrap">{formatDateTime(c.created_at)}</td>
-                  <td>{(c.inspector as { full_name: string } | undefined)?.full_name ?? '-'}</td>
-                  <td>{c.item_name ?? '-'}</td>
-                  <td>{c.note ?? <span className="mutedCell">-</span>}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>}
+          (() => {
+            const grouped: Record<string, VisitCheck[]> = {}
+            const order: string[] = []
+            for (const c of checks) {
+              const key = c.visit_log_id ?? 'unknown'
+              if (!grouped[key]) { grouped[key] = []; order.push(key) }
+              grouped[key].push(c)
+            }
+            return order.map(key => {
+              const group = grouped[key]
+              const first = group[0]
+              const insp = (first.inspector as { full_name: string } | undefined)?.full_name ?? '-'
+              return (
+                <div key={key} className="card" style={{ margin: 0 }}>
+                  <div className="card__header" style={{ padding: '8px 12px' }}>
+                    <div style={{ fontSize: '.82rem', color: 'var(--muted)' }}>
+                      {formatDateTime(first.created_at)} | {insp}
+                    </div>
+                  </div>
+                  <div className="tableWrap" style={{ margin: 0 }}>
+                    <table>
+                      <thead><tr><th>בדיקה</th><th>הערה</th></tr></thead>
+                      <tbody>
+                        {group.map(c => (
+                          <tr key={c.id}>
+                            <td>{c.item_name ?? '-'}</td>
+                            <td>{c.note ?? <span className="mutedCell">-</span>}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )
+            })
+          })()}
         </div>
       )}
 

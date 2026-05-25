@@ -21,6 +21,7 @@ export default function InspectorsTab() {
   const [resetInsp, setResetInsp] = useState<Profile | null>(null)
   const [assignedLocs, setAssignedLocs] = useState<Record<string, string[]>>({})
   const [emailMap, setEmailMap] = useState<Record<string, string | null>>({})
+  const [contractLoading, setContractLoading] = useState<Record<string, boolean>>({})
 
   useEffect(() => { loadAll() }, [])
 
@@ -118,10 +119,21 @@ export default function InspectorsTab() {
     const path = `contracts/${inspId}/${file.name}`
     const { error } = await supabase.storage.from('contracts').upload(path, file, { upsert: true })
     if (error) { toast('שגיאה בהעלאה', 'error'); return }
-    const { data: { publicUrl } } = supabase.storage.from('contracts').getPublicUrl(path)
-    await supabase.from('profiles').update({ contract_url: publicUrl }).eq('id', inspId)
-    setInspectors(prev => prev.map(i => i.id === inspId ? { ...i, contract_url: publicUrl } : i))
+    await supabase.from('profiles').update({ contract_url: path }).eq('id', inspId)
+    setInspectors(prev => prev.map(i => i.id === inspId ? { ...i, contract_url: path } : i))
     toast('חוזה הועלה', 'success')
+  }
+
+  async function openContract(inspId: string) {
+    setContractLoading(prev => ({ ...prev, [inspId]: true }))
+    try {
+      const res = await fetch(`/api/admin/contract-url?inspector_id=${inspId}`)
+      if (!res.ok) { toast('שגיאה בפתיחת החוזה', 'error'); return }
+      const { url } = await res.json()
+      window.open(url, '_blank', 'noreferrer')
+    } finally {
+      setContractLoading(prev => ({ ...prev, [inspId]: false }))
+    }
   }
 
   async function toggleLocAssign(inspId: string, locId: string) {
@@ -169,10 +181,11 @@ export default function InspectorsTab() {
                     </td>
                     <td>
                       {insp.contract_url
-                        ? <a href={insp.contract_url} target="_blank" rel="noreferrer"
-                            className="button button--ghost button--sm">
-                            <ExternalLink size={13} /> צפה
-                          </a>
+                        ? <button className="button button--ghost button--sm"
+                            onClick={() => openContract(insp.id)}
+                            disabled={contractLoading[insp.id]}>
+                            {contractLoading[insp.id] ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <ExternalLink size={13} />} צפה
+                          </button>
                         : <span className="mutedCell">אין</span>}
                     </td>
                     <td>
@@ -288,10 +301,11 @@ export default function InspectorsTab() {
               {detailInsp.contract_url && (
                 <div className="filePreview" style={{ marginBottom: 10 }}>
                   <span>חוזה קיים</span>
-                  <a href={detailInsp.contract_url} target="_blank" rel="noreferrer"
-                    className="button button--ghost button--sm">
-                    <ExternalLink size={13} /> פתח
-                  </a>
+                  <button className="button button--ghost button--sm"
+                    onClick={() => openContract(detailInsp.id)}
+                    disabled={contractLoading[detailInsp.id]}>
+                    {contractLoading[detailInsp.id] ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <ExternalLink size={13} />} פתח
+                  </button>
                 </div>
               )}
               <label className="fileUpload">

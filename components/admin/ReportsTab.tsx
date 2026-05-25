@@ -6,23 +6,33 @@ import { formatDateTime, actionLabel, statusLabel } from '@/lib/utils/format'
 import { exportToExcel } from '@/lib/utils/excel'
 import type { VisitLog } from '@/lib/supabase/types'
 
+function thirtyDaysAgo() {
+  const d = new Date()
+  d.setDate(d.getDate() - 30)
+  return d.toISOString().slice(0, 10)
+}
+
+const DEFAULT_FROM = thirtyDaysAgo()
+
 export default function ReportsTab() {
   const supabase = createClient()
   const [logs, setLogs] = useState<VisitLog[]>([])
   const [loading, setLoading] = useState(true)
-  const [filters, setFilters] = useState({ from: '', to: '', inspector: '', location: '', action: '' })
+  const [filters, setFilters] = useState({ from: DEFAULT_FROM, to: '', inspector: '', location: '', action: '' })
   const [inspectorList, setInspectorList] = useState<{ id: string; full_name: string }[]>([])
   const [locationList, setLocationList] = useState<{ id: string; name: string }[]>([])
 
-  useEffect(() => { loadAll() }, [])
+  useEffect(() => { loadAll(DEFAULT_FROM) }, [])
 
-  async function loadAll() {
+  async function loadAll(fromDate = filters.from) {
     setLoading(true)
+    const q = supabase.from('visit_logs')
+      .select('*, inspector:profiles(id,full_name), location:locations(id,name,city)')
+      .order('created_at', { ascending: false })
+      .limit(500)
+    if (fromDate) q.gte('created_at', fromDate)
     const [{ data: logsData }, { data: insp }, { data: locs }] = await Promise.all([
-      supabase.from('visit_logs')
-        .select('*, inspector:profiles(id,full_name), location:locations(id,name,city)')
-        .order('created_at', { ascending: false })
-        .limit(500),
+      q,
       supabase.from('profiles').select('id,full_name').eq('role', 'mashgiach').order('full_name'),
       supabase.from('locations').select('id,name').order('name'),
     ])
@@ -93,6 +103,10 @@ export default function ReportsTab() {
                 <option value="exit">יציאה</option>
               </select>
             </label>
+          </div>
+          <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <button className="button button--primary button--sm" onClick={() => loadAll(filters.from)}>טען</button>
+            <span style={{ fontSize: '.8rem', color: 'var(--muted)' }}>מוצגים נתוני 30 הימים האחרונים. לצפייה בנתונים ישנים יותר, שנה את תאריך ההתחלה ולחץ טען.</span>
           </div>
         </div>
       </div>
