@@ -17,12 +17,13 @@ export default function InspectorHome() {
   const [userEmail, setUserEmail] = useState<string | null>(null)
   const [locations, setLocations] = useState<LocationWithLastVisit[]>([])
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'home' | 'report' | 'absence' | 'profile'>(() => {
-    if (typeof window === 'undefined') return 'home'
-    return (sessionStorage.getItem('inspectorTab') as 'home' | 'report' | 'absence' | 'profile') ?? 'home'
-  })
+  const [activeTab, setActiveTab] = useState<'home' | 'report' | 'absence' | 'profile'>('home')
 
   useEffect(() => { loadAll() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const saved = localStorage.getItem('inspectorTab') as typeof activeTab | null
+    if (saved) setActiveTab(saved)
+  }, [])
 
   async function loadAll() {
     const { data: { user } } = await supabase.auth.getUser()
@@ -159,7 +160,7 @@ export default function InspectorHome() {
         ].map(({ id, label, Icon }) => (
           <button key={id}
             className={`bottomNavItem${activeTab === id ? ' bottomNavItem--active' : ''}`}
-            onClick={() => { const t = id as typeof activeTab; sessionStorage.setItem('inspectorTab', t); setActiveTab(t) }}>
+            onClick={() => { const t = id as typeof activeTab; localStorage.setItem('inspectorTab', t); setActiveTab(t) }}>
             <Icon size={20} />
             <span>{label}</span>
           </button>
