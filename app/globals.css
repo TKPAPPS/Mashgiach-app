@@ -358,6 +358,7 @@ tbody td { padding: 10px 12px; vertical-align: middle; }
 .modal {
   background: var(--surface);
   border-radius: var(--radius-lg);
+  overflow: hidden;
   box-shadow: var(--shadow-lg);
   width: 100%; max-width: 520px;
   max-height: 92vh;
@@ -373,6 +374,7 @@ tbody td { padding: 10px 12px; vertical-align: middle; }
   display: flex; align-items: center; justify-content: space-between;
   flex-shrink: 0;
   background: var(--primary-faint);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 }
 .modal__title { font-size: 1.25rem; font-weight: 700; color: var(--primary); }
 .modal__body  { padding: 18px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 14px; }
@@ -382,6 +384,7 @@ tbody td { padding: 10px 12px; vertical-align: middle; }
   display: flex; gap: 8px; justify-content: flex-end;
   flex-shrink: 0;
   background: var(--primary-faint);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
 }
 
 @keyframes fadeIn  { from { opacity: 0; } to { opacity: 1; } }
@@ -581,5 +584,6 @@ tbody td { padding: 10px 12px; vertical-align: middle; }
 @media (max-width: 480px) {
   .appMain { padding: 12px; gap: 12px; }
   .modal { max-height: 100vh; border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+  .modal__footer { border-radius: 0; }
   .modalOverlay { align-items: flex-end; padding: 0; }
 }
