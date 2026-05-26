@@ -43,14 +43,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: authError?.message ?? 'Failed to create user' }, { status: 400 })
   }
 
-  // Create profile
-  const { error: profileError } = await service.from('profiles').insert({
+  // Upsert profile — the on_auth_user_created trigger may have already inserted a
+  // partial row (email as full_name, no start_date). Upsert overwrites it with the
+  // correct values supplied by the admin.
+  const { error: profileError } = await service.from('profiles').upsert({
     id: authData.user.id,
     full_name,
     role: 'mashgiach',
     start_date: start_date || null,
     vacation_days_remaining: vacation_days_remaining ?? 0,
-  })
+  }, { onConflict: 'id' })
 
   if (profileError) {
     // Rollback auth user
