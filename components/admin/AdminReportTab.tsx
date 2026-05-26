@@ -67,7 +67,7 @@ function ReportForm({
 }: {
   locations: SharedLocation[]
   initial?: Partial<LocationReport>
-  onSave: () => void
+  onSave: (saved: LocationReport) => void
   onClose: () => void
 }) {
   const today = new Date().toISOString().slice(0, 10)
@@ -97,7 +97,7 @@ function ReportForm({
       setErr(body2?.error ?? 'שגיאה בשמירה')
       return
     }
-    onSave()
+    onSave(await res.json())
   }
 
   return (
@@ -566,10 +566,11 @@ export default function AdminReportTab({ refreshKey, locations }: Props) {
         <ReportForm
           locations={locations}
           initial={editing ?? undefined}
-          onSave={() => {
+          onSave={saved => {
             setShowForm(false)
             setEditing(null)
             loadReports()
+            if (saved?.id) setSelected(saved)
           }}
           onClose={() => { setShowForm(false); setEditing(null) }}
         />
