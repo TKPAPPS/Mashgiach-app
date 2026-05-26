@@ -12,8 +12,15 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'The Kosher Place: Mashgiach',
     description: 'מערכת מעקב ובקרה לביקורי משגיחים',
-    images: [{ url: '/logo.png', width: 1000, height: 1000, alt: 'The Kosher Place' }],
+    url: 'https://mashgiach.tkpapps.com',
+    images: [{ url: 'https://mashgiach.tkpapps.com/logo.png', width: 1000, height: 1000, alt: 'The Kosher Place' }],
     type: 'website',
+  },
+  twitter: {
+    card: 'summary',
+    title: 'The Kosher Place: Mashgiach',
+    description: 'מערכת מעקב ובקרה לביקורי משגיחים',
+    images: ['https://mashgiach.tkpapps.com/logo.png'],
   },
 }
 

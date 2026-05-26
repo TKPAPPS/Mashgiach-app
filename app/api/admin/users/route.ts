@@ -76,8 +76,12 @@ export async function DELETE(req: NextRequest) {
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
   const service = createServiceClient()
-  await service.from('profiles').delete().eq('id', id)
-  await service.auth.admin.deleteUser(id)
+
+  const { error: profileError } = await service.from('profiles').delete().eq('id', id)
+  if (profileError) return NextResponse.json({ error: profileError.message }, { status: 500 })
+
+  const { error: authError } = await service.auth.admin.deleteUser(id)
+  if (authError) return NextResponse.json({ error: authError.message }, { status: 500 })
 
   return NextResponse.json({ success: true })
 }
