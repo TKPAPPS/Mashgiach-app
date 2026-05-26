@@ -41,8 +41,15 @@ const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
 export default function AdminShell() {
   const router = useRouter()
   const supabase = createClient()
-  const [tab, setTab] = useState<Tab>('dashboard')
-  const [mountedTabs, setMountedTabs] = useState<Set<Tab>>(new Set(['dashboard'] as Tab[]))
+  const [tab, setTab] = useState<Tab>(() => {
+    if (typeof window === 'undefined') return 'dashboard'
+    return (sessionStorage.getItem('adminTab') as Tab) ?? 'dashboard'
+  })
+  const [mountedTabs, setMountedTabs] = useState<Set<Tab>>(() => {
+    if (typeof window === 'undefined') return new Set(['dashboard'] as Tab[])
+    const saved = sessionStorage.getItem('adminTab') as Tab | null
+    return new Set(saved ? ['dashboard', saved] as Tab[] : ['dashboard'] as Tab[])
+  })
   const [profile, setProfile] = useState<Profile | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -85,6 +92,7 @@ export default function AdminShell() {
   }
 
   function handleTabChange(newTab: Tab) {
+    sessionStorage.setItem('adminTab', newTab)
     setTab(newTab)
     setMountedTabs(prev => new Set([...prev, newTab]))
   }

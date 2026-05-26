@@ -13,14 +13,12 @@ export const metadata: Metadata = {
     title: 'The Kosher Place: Mashgiach',
     description: 'מערכת מעקב ובקרה לביקורי משגיחים',
     url: 'https://mashgiach.tkpapps.com',
-    images: [{ url: 'https://mashgiach.tkpapps.com/logo.png', width: 1000, height: 1000, alt: 'The Kosher Place' }],
     type: 'website',
   },
   twitter: {
-    card: 'summary',
+    card: 'summary_large_image',
     title: 'The Kosher Place: Mashgiach',
     description: 'מערכת מעקב ובקרה לביקורי משגיחים',
-    images: ['https://mashgiach.tkpapps.com/logo.png'],
   },
 }
 
