@@ -22,13 +22,23 @@ export default function AdminsTab({ refreshKey, emailMap, currentUserId }: Props
   const [resetAdmin, setResetAdmin] = useState<Profile | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [localEmailMap, setLocalEmailMap] = useState<Record<string, string | null>>(emailMap)
 
   useEffect(() => { loadAll() }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadAll() {
     setLoading(true)
-    const { data } = await supabase.from('profiles').select('*').eq('role', 'admin').order('full_name')
+    const [{ data }, emailsRes] = await Promise.all([
+      supabase.from('profiles').select('*').eq('role', 'admin').order('full_name'),
+      fetch('/api/admin/users'),
+    ])
     setAdmins((data ?? []) as Profile[])
+    if (emailsRes.ok) {
+      const list: { id: string; email: string | null }[] = await emailsRes.json()
+      const em: Record<string, string | null> = {}
+      for (const e of list) em[e.id] = e.email
+      setLocalEmailMap(em)
+    }
     setLoading(false)
   }
 
@@ -118,7 +128,7 @@ export default function AdminsTab({ refreshKey, emailMap, currentUserId }: Props
                     )}
                   </td>
                   <td style={{ fontSize: '.82rem', color: 'var(--muted)' }}>
-                    {emailMap[admin.id] ?? <span className="mutedCell">-</span>}
+                    {localEmailMap[admin.id] ?? <span className="mutedCell">-</span>}
                   </td>
                   <td>
                     <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>

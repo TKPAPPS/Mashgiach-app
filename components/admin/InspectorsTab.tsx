@@ -27,14 +27,16 @@ export default function InspectorsTab({ refreshKey, locations, emailMap }: Props
   const [resetInsp, setResetInsp] = useState<Profile | null>(null)
   const [assignedLocs, setAssignedLocs] = useState<Record<string, string[]>>({})
   const [contractLoading, setContractLoading] = useState<Record<string, boolean>>({})
+  const [localEmailMap, setLocalEmailMap] = useState<Record<string, string | null>>(emailMap)
 
   useEffect(() => { loadAll() }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadAll() {
     setLoading(true)
-    const [{ data: insp }, { data: il }] = await Promise.all([
+    const [{ data: insp }, { data: il }, emailsRes] = await Promise.all([
       supabase.from('profiles').select('*').eq('role', 'mashgiach').order('full_name'),
       supabase.from('inspector_locations').select('inspector_id,location_id'),
+      fetch('/api/admin/users'),
     ])
     setInspectors((insp ?? []) as Profile[])
     const map: Record<string, string[]> = {}
@@ -43,6 +45,12 @@ export default function InspectorsTab({ refreshKey, locations, emailMap }: Props
       map[row.inspector_id].push(row.location_id)
     }
     setAssignedLocs(map)
+    if (emailsRes.ok) {
+      const list: { id: string; email: string | null }[] = await emailsRes.json()
+      const em: Record<string, string | null> = {}
+      for (const e of list) em[e.id] = e.email
+      setLocalEmailMap(em)
+    }
     setLoading(false)
   }
 
@@ -73,7 +81,7 @@ export default function InspectorsTab({ refreshKey, locations, emailMap }: Props
     setSaving(true)
     const fd = new FormData(e.currentTarget)
     const newEmail = (fd.get('email') as string).trim()
-    const currentEmail = emailMap[editInsp.id] ?? ''
+    const currentEmail = localEmailMap[editInsp.id] ?? ''
 
     const { error } = await supabase.from('profiles').update({
       full_name: fd.get('full_name') as string,
@@ -185,7 +193,7 @@ export default function InspectorsTab({ refreshKey, locations, emailMap }: Props
                 {inspectors.map(insp => (
                   <tr key={insp.id}>
                     <td><strong>{insp.full_name}</strong></td>
-                    <td style={{ fontSize: '.82rem', color: 'var(--muted)' }}>{emailMap[insp.id] ?? <span className="mutedCell">-</span>}</td>
+                    <td style={{ fontSize: '.82rem', color: 'var(--muted)' }}>{localEmailMap[insp.id] ?? <span className="mutedCell">-</span>}</td>
                     <td>{insp.start_date ? formatDate(insp.start_date) : <span className="mutedCell">-</span>}</td>
                     <td>{insp.vacation_days_remaining}</td>
                     <td>
@@ -254,7 +262,7 @@ export default function InspectorsTab({ refreshKey, locations, emailMap }: Props
         {editInsp && (
           <form id="insp-edit-form" onSubmit={handleUpdate} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <label className="field"><span>שם מלא</span><input name="full_name" required defaultValue={editInsp.full_name} /></label>
-            <label className="field"><span>אימייל</span><input name="email" type="email" defaultValue={emailMap[editInsp.id] ?? ''} /></label>
+            <label className="field"><span>אימייל</span><input name="email" type="email" defaultValue={localEmailMap[editInsp.id] ?? ''} /></label>
             <div className="fieldRow">
               <label className="field"><span>תאריך התחלה</span><input name="start_date" type="date" defaultValue={editInsp.start_date ?? ''} /></label>
               <label className="field"><span>ימי חופש</span><input name="vacation_days" type="number" min={0} defaultValue={editInsp.vacation_days_remaining} /></label>
@@ -329,7 +337,7 @@ export default function InspectorsTab({ refreshKey, locations, emailMap }: Props
               </div>
               <div className="field" style={{ gridColumn: '1 / -1' }}><span>אימייל</span>
                 <div style={{ fontSize: '.9rem', direction: 'ltr', textAlign: 'right' }}>
-                  {emailMap[detailInsp.id] ?? '-'}
+                  {localEmailMap[detailInsp.id] ?? '-'}
                 </div>
               </div>
             </div>
