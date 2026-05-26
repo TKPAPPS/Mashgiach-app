@@ -251,7 +251,7 @@ export default function DashboardTab({ refreshKey, inspectors, locations }: Prop
       </div>
 
       {/* Summary tables */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+      <div className="summaryGrid">
         <div className="card">
           <div className="card__header--inline"><div className="card__title">כניסות לפי מקום</div></div>
           <div className="tableWrap">

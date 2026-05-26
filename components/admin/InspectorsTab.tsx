@@ -328,7 +328,7 @@ export default function InspectorsTab({ refreshKey, locations, emailMap }: Props
         <Modal open onClose={() => setDetailInsp(null)} title={detailInsp.full_name} size="lg">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
             {/* Info */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div className="infoGrid">
               <div className="field"><span>תאריך התחלה</span>
                 <div>{detailInsp.start_date ? formatDate(detailInsp.start_date) : '-'}</div>
               </div>

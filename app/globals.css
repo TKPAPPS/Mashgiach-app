@@ -162,6 +162,14 @@ body {
 /* ─── Stats ───────────────────────────────────────────── */
 .statsGrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
 @media (min-width: 640px) { .statsGrid { grid-template-columns: repeat(4, 1fr); } }
+
+/* Two-column summary grid that collapses to one column on small screens */
+.summaryGrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+@media (max-width: 600px) { .summaryGrid { grid-template-columns: 1fr; } }
+
+/* Two-column info grid in modals/detail panels — collapses to one column on small screens */
+.infoGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 480px) { .infoGrid { grid-template-columns: 1fr; } }
 .statCard {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -225,6 +233,10 @@ body {
 .field--ltr input { direction: ltr; text-align: left; }
 .fieldRow  { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .fieldRow3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+@media (max-width: 420px) {
+  .fieldRow  { grid-template-columns: 1fr; }
+  .fieldRow3 { grid-template-columns: 1fr; }
+}
 
 /* ─── Buttons ─────────────────────────────────────────── */
 .button {
@@ -266,6 +278,7 @@ body {
 }
 .button--ghost:hover:not(:disabled) { background: var(--primary-faint); color: var(--primary); border-color: var(--border-strong); }
 .button--icon    { padding: 7px; }
+@media (max-width: 640px) { .button--icon { padding: 10px; } }
 .button--wide    { width: 100%; }
 .button--sm      { padding: 5px 10px; font-size: .8rem; }
 .button--lg      { padding: 13px 22px; font-size: 1rem; }
