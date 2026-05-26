@@ -21,7 +21,7 @@ function computeTimeSpent(logs: VisitLog[]): Record<string, string> {
       if (mins >= 0 && mins < 1440) {
         const h = Math.floor(mins / 60)
         const m = mins % 60
-        result[log.id] = h > 0 ? `${h}ש׳ ${m}ד׳` : `${m}ד׳`
+        result[log.id] = `${h}:${String(m).padStart(2, '0')}`
       }
       delete lastEntry[key]
     }
