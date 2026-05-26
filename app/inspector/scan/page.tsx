@@ -1,7 +1,7 @@
 'use client'
-import { useState, useRef } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { QrCode, CheckCircle, ArrowRight } from 'lucide-react'
+import { CheckCircle, ArrowRight, Camera } from 'lucide-react'
 
 type ScanResult = {
   success: boolean
@@ -10,36 +10,35 @@ type ScanResult = {
   location_id?: string
   visit_log_id?: string
   has_checklist?: boolean
-  message?: string
 }
 
 export default function ScanPage() {
   const router = useRouter()
-  const [qrCode, setQrCode] = useState('')
-  const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<ScanResult | null>(null)
-  const [gpsLoading, setGpsLoading] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const [processing, setProcessing] = useState(false)
+  const [cameraError, setCameraError] = useState<string | null>(null)
+  const scannerRef = useRef<{ stop: () => Promise<void> } | null>(null)
+  const hasScanned = useRef(false)
 
-  async function handleScan(e: React.FormEvent) {
-    e.preventDefault()
-    if (!qrCode.trim()) return
-    setLoading(true)
-    setGpsLoading(true)
+  const doScan = useCallback(async (qrCode: string) => {
+    if (hasScanned.current) return
+    hasScanned.current = true
+    setProcessing(true)
+
+    if (scannerRef.current) {
+      try { await scannerRef.current.stop() } catch {}
+      scannerRef.current = null
+    }
 
     let lat: number | null = null
     let lng: number | null = null
-
     try {
       const pos = await new Promise<GeolocationPosition>((res, rej) =>
         navigator.geolocation.getCurrentPosition(res, rej, { timeout: 8000, maximumAge: 0 })
       )
       lat = pos.coords.latitude
       lng = pos.coords.longitude
-    } catch {
-      // GPS unavailable; server will handle accordingly
-    }
-    setGpsLoading(false)
+    } catch {}
 
     const res = await fetch('/api/inspector/scan', {
       method: 'POST',
@@ -48,15 +47,55 @@ export default function ScanPage() {
     })
     const data: ScanResult = await res.json()
 
-    // Scan API returns has_checklist (server-side count) for exit scans.
-    // Redirect to checklist page without a second round-trip.
     if (data.success && data.action_type === 'exit' && data.has_checklist && data.visit_log_id && data.location_id) {
       router.push(`/inspector/checklist?visit_log_id=${data.visit_log_id}&location_id=${data.location_id}`)
       return
     }
 
     setResult(data)
-    setLoading(false)
+    setProcessing(false)
+  }, [router])
+
+  useEffect(() => {
+    let stopped = false
+
+    async function start() {
+      const { Html5Qrcode } = await import('html5-qrcode')
+      if (stopped) return
+
+      const scanner = new Html5Qrcode('qr-reader')
+      scannerRef.current = scanner as unknown as { stop: () => Promise<void> }
+
+      try {
+        await scanner.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 240, height: 240 } },
+          (text: string) => { doScan(text) },
+          () => {}
+        )
+      } catch {
+        setCameraError('לא ניתן לגשת למצלמה. אנא אפשר גישה למצלמה בהגדרות הדפדפן.')
+      }
+    }
+
+    start()
+
+    return () => {
+      stopped = true
+      if (scannerRef.current) {
+        scannerRef.current.stop().catch(() => {})
+        scannerRef.current = null
+      }
+    }
+  }, [doScan])
+
+  function handleRetry() {
+    hasScanned.current = false
+    setResult(null)
+    setProcessing(false)
+    setCameraError(null)
+    // Remount the scanner by navigating to self
+    router.replace('/inspector/scan')
   }
 
   if (result) {
@@ -81,14 +120,21 @@ export default function ScanPage() {
                 המשך לרשימת בדיקות
               </button>
             )}
-            <button className="button button--ghost" onClick={() => { setResult(null); setQrCode('') }}>
-              סריקה נוספת
-            </button>
+            <button className="button button--ghost" onClick={handleRetry}>סריקה נוספת</button>
             <button className="button button--ghost" onClick={() => router.push('/inspector')}>
               <ArrowRight size={15} /> חזור לבית
             </button>
           </div>
         </div>
+      </div>
+    )
+  }
+
+  if (processing) {
+    return (
+      <div className="app" style={{ maxWidth: 480, margin: '0 auto', minHeight: '100svh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
+        <span className="spinner" style={{ width: 40, height: 40 }} />
+        <p style={{ color: 'var(--muted)' }}>מעבד סריקה...</p>
       </div>
     )
   }
@@ -103,38 +149,25 @@ export default function ScanPage() {
         <div className="appHeader__title" style={{ flex: 1, textAlign: 'center' }}>סריקת QR</div>
       </header>
 
-      <div style={{ padding: '32px 20px', display: 'flex', flexDirection: 'column', gap: 24 }}>
-        <div style={{ textAlign: 'center', color: 'var(--muted)' }}>
-          <QrCode size={64} style={{ color: 'var(--primary)', margin: '0 auto 12px' }} />
-          <p>הזן את קוד ה-QR שמוצג במקום</p>
-        </div>
-
-        <form onSubmit={handleScan} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <label className="field">
-            <span>קוד QR</span>
-            <input
-              ref={inputRef}
-              value={qrCode}
-              onChange={e => setQrCode(e.target.value.toUpperCase())}
-              placeholder="LOC-XXXX-XXXX"
-              autoFocus
-              autoComplete="off"
-              style={{ fontSize: '1.1rem', letterSpacing: '.08em', direction: 'ltr', textAlign: 'center' }}
-            />
-          </label>
-
-          {gpsLoading && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--muted)', fontSize: '.85rem' }}>
-              <span className="spinner" style={{ width: 14, height: 14 }} />
-              <span>מאתר מיקום GPS...</span>
+      <div style={{ padding: '32px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20 }}>
+        {cameraError ? (
+          <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+            <Camera size={48} style={{ color: 'var(--muted)' }} />
+            <p style={{ color: 'var(--danger)', fontSize: '.95rem', maxWidth: 280 }}>{cameraError}</p>
+            <button className="button button--ghost" onClick={() => router.push('/inspector')}>
+              <ArrowRight size={15} /> חזור לבית
+            </button>
+          </div>
+        ) : (
+          <>
+            <p style={{ color: 'var(--muted)', fontSize: '.875rem', textAlign: 'center' }}>
+              כוון את המצלמה לקוד ה-QR שמוצג במקום
+            </p>
+            <div className="scanBox" style={{ maxWidth: 320 }}>
+              <div id="qr-reader" style={{ width: '100%', height: '100%' }} />
             </div>
-          )}
-
-          <button className="button button--primary" type="submit"
-            disabled={loading || !qrCode.trim()} style={{ height: 50, fontSize: '1rem' }}>
-            {loading ? <span className="spinner" /> : 'אשר כניסה / יציאה'}
-          </button>
-        </form>
+          </>
+        )}
       </div>
     </div>
   )
