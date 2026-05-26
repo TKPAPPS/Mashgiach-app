@@ -72,12 +72,30 @@ export default function InspectorsTab({ refreshKey, locations, emailMap }: Props
     if (!editInsp) return
     setSaving(true)
     const fd = new FormData(e.currentTarget)
+    const newEmail = (fd.get('email') as string).trim()
+    const currentEmail = emailMap[editInsp.id] ?? ''
+
     const { error } = await supabase.from('profiles').update({
       full_name: fd.get('full_name') as string,
       start_date: (fd.get('start_date') as string) || null,
       vacation_days_remaining: Number(fd.get('vacation_days') || 0),
     }).eq('id', editInsp.id)
     if (error) { toast('שגיאה בעדכון', 'error'); setSaving(false); return }
+
+    if (newEmail && newEmail !== currentEmail) {
+      const res = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editInsp.id, email: newEmail }),
+      })
+      if (!res.ok) {
+        const json = await res.json()
+        toast(json.error ?? 'שגיאה בעדכון אימייל', 'error')
+        setSaving(false)
+        return
+      }
+    }
+
     toast('עודכן בהצלחה', 'success')
     setEditInsp(null)
     loadAll()
@@ -236,6 +254,7 @@ export default function InspectorsTab({ refreshKey, locations, emailMap }: Props
         {editInsp && (
           <form id="insp-edit-form" onSubmit={handleUpdate} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <label className="field"><span>שם מלא</span><input name="full_name" required defaultValue={editInsp.full_name} /></label>
+            <label className="field"><span>אימייל</span><input name="email" type="email" defaultValue={emailMap[editInsp.id] ?? ''} /></label>
             <div className="fieldRow">
               <label className="field"><span>תאריך התחלה</span><input name="start_date" type="date" defaultValue={editInsp.start_date ?? ''} /></label>
               <label className="field"><span>ימי חופש</span><input name="vacation_days" type="number" min={0} defaultValue={editInsp.vacation_days_remaining} /></label>
