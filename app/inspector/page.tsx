@@ -1,8 +1,8 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { MapPin, QrCode, AlertTriangle, Calendar, User, LogOut } from 'lucide-react'
+import { MapPin, QrCode, AlertTriangle, Calendar, User, LogOut, Camera, Trash2 } from 'lucide-react'
 import Image from 'next/image'
 import { formatRelative, formatDate } from '@/lib/utils/format'
 import type { Location, Profile, VisitLog } from '@/lib/supabase/types'
@@ -166,10 +166,15 @@ export default function InspectorHome() {
   )
 }
 
+type ReportPhoto = { id: string; url: string | null }
+
 function ReportForm({ profile, locations }: { profile: Profile | null; locations: Location[] }) {
   const [saving, setSaving] = useState(false)
-  const [done, setDone] = useState(false)
   const [error, setError] = useState(false)
+  const [reportId, setReportId] = useState<string | null>(null)
+  const [photos, setPhotos] = useState<ReportPhoto[]>([])
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -186,14 +191,38 @@ function ReportForm({ profile, locations }: { profile: Profile | null; locations
       }),
     })
     setSaving(false)
-    if (!res.ok) {
-      setError(true)
-      setTimeout(() => setError(false), 4000)
-      return
+    if (!res.ok) { setError(true); setTimeout(() => setError(false), 4000); return }
+    const data = await res.json()
+    setReportId(data.report_id ?? null)
+    setPhotos([])
+  }
+
+  async function handleFiles(files: FileList | null) {
+    if (!files || !reportId) return
+    const remaining = 10 - photos.length
+    const toUpload = Array.from(files).slice(0, remaining)
+    setUploading(true)
+    for (const file of toUpload) {
+      const fd = new FormData()
+      fd.append('report_id', reportId)
+      fd.append('file', file)
+      const res = await fetch('/api/inspector/report-photos', { method: 'POST', body: fd })
+      if (res.ok) {
+        const photo: ReportPhoto = await res.json()
+        setPhotos(prev => [...prev, photo])
+      }
     }
-    setDone(true)
-    setTimeout(() => setDone(false), 3000)
-    ;(e.target as HTMLFormElement).reset()
+    setUploading(false)
+  }
+
+  async function handleDeletePhoto(photoId: string) {
+    await fetch(`/api/inspector/report-photos?id=${photoId}`, { method: 'DELETE' })
+    setPhotos(prev => prev.filter(p => p.id !== photoId))
+  }
+
+  function handleDone() {
+    setReportId(null)
+    setPhotos([])
   }
 
   if (error) return (
@@ -203,10 +232,44 @@ function ReportForm({ profile, locations }: { profile: Profile | null; locations
     </div>
   )
 
-  if (done) return (
-    <div className="card" style={{ textAlign: 'center', padding: 32 }}>
-      <div style={{ color: 'var(--success)', fontSize: '2rem' }}>✓</div>
-      <div style={{ marginTop: 8 }}>הדיווח נשלח בהצלחה</div>
+  if (reportId) return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div className="card" style={{ textAlign: 'center', padding: '20px 16px' }}>
+        <div style={{ color: 'var(--success)', fontSize: '2rem', marginBottom: 6 }}>✓</div>
+        <div style={{ fontWeight: 600 }}>הדיווח נשלח בהצלחה</div>
+        <div style={{ color: 'var(--muted)', fontSize: '.85rem', marginTop: 4 }}>ניתן לצרף תמונות לדיווח</div>
+      </div>
+
+      <div className="card">
+        <div className="card__header"><div className="card__title">תמונות לדיווח ({photos.length}/10)</div></div>
+        <div className="card__body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {photos.length > 0 && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
+              {photos.map(p => (
+                <div key={p.id} style={{ position: 'relative', aspectRatio: '1', borderRadius: 8, overflow: 'hidden', background: 'var(--border)' }}>
+                  {p.url && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={p.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  )}
+                  <button onClick={() => handleDeletePhoto(p.id)}
+                    style={{ position: 'absolute', top: 4, right: 4, background: 'rgba(0,0,0,.55)', border: 'none', borderRadius: 6, color: '#fff', width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          {photos.length < 10 && (
+            <button className="button button--ghost" style={{ gap: 8 }} disabled={uploading} onClick={() => fileInputRef.current?.click()}>
+              {uploading ? <span className="spinner" style={{ width: 16, height: 16 }} /> : <Camera size={16} />}
+              {uploading ? 'מעלה...' : `הוסף תמונה (${10 - photos.length} נותרו)`}
+            </button>
+          )}
+          <input ref={fileInputRef} type="file" accept="image/*" multiple capture="environment" style={{ display: 'none' }} onChange={e => handleFiles(e.target.files)} />
+        </div>
+      </div>
+
+      <button className="button button--primary" onClick={handleDone}>סיים</button>
     </div>
   )
 

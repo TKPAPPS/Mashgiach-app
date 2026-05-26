@@ -12,14 +12,14 @@ export async function POST(req: NextRequest) {
   }
 
   const service = createServiceClient()
-  const { error } = await service.from('deficiency_reports').insert({
+  const { data: report, error } = await service.from('deficiency_reports').insert({
     inspector_id: user.id,
     location_id,
     report_type: (report_type ?? 'deficiency') as 'deficiency' | 'note',
     description,
     admin_status: 'open' as const,
     admin_notes: null,
-  })
+  }).select('id').single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
@@ -39,5 +39,5 @@ export async function POST(req: NextRequest) {
     // Non-fatal
   }
 
-  return NextResponse.json({ success: true })
+  return NextResponse.json({ success: true, report_id: report?.id ?? null })
 }

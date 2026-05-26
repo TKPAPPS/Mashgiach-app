@@ -126,6 +126,14 @@ export type SystemLog = {
   location?: Pick<Location, 'id' | 'name'>
 }
 
+export type ReportPhoto = {
+  id: string
+  report_id: string
+  inspector_id: string
+  photo_path: string
+  created_at: string
+}
+
 export type VisitPhoto = {
   id: string
   visit_log_id: string
@@ -169,6 +177,7 @@ export type Database = {
       system_logs:         TableDef<SystemLog, Omit<SystemLog,'id'|'created_at'|'performer'|'location'>, Partial<Omit<SystemLog,'performer'|'location'>>>
       gps_alerts:          TableDef<GpsAlert, Omit<GpsAlert,'id'|'created_at'|'inspector'|'location'>, Partial<Omit<GpsAlert,'inspector'|'location'>>>
       visit_photos:        TableDef<VisitPhoto, Omit<VisitPhoto,'id'|'created_at'>, Partial<VisitPhoto>>
+      report_photos:       TableDef<ReportPhoto, Omit<ReportPhoto,'id'|'created_at'>, Partial<ReportPhoto>>
       push_subscriptions:  TableDef<{ id: string; user_id: string; endpoint: string; p256dh: string; auth: string; created_at: string }, { user_id: string; endpoint: string; p256dh: string; auth: string }, { user_id?: string; endpoint?: string; p256dh?: string; auth?: string }>
     }
     Views: Record<string, never>

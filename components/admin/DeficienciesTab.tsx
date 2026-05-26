@@ -1,11 +1,62 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Download } from 'lucide-react'
+import { Download, Camera, X } from 'lucide-react'
 import { formatDateTime, adminStatusLabel, reportTypeLabel } from '@/lib/utils/format'
 import { exportToExcel } from '@/lib/utils/excel'
 import type { DeficiencyReport } from '@/lib/supabase/types'
 import type { SharedInspector, SharedLocation } from './AdminShell'
+
+type ReportPhoto = { id: string; url: string | null; created_at: string }
+
+function PhotoViewerModal({ reportId, onClose }: { reportId: string; onClose: () => void }) {
+  const [photos, setPhotos] = useState<ReportPhoto[]>([])
+  const [loading, setLoading] = useState(true)
+  const [lightbox, setLightbox] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch(`/api/admin/report-photos?report_id=${reportId}`)
+      .then(r => r.json())
+      .then(data => { setPhotos(Array.isArray(data) ? data : []); setLoading(false) })
+  }, [reportId])
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 560, margin: '0 16px', padding: '20px 16px 24px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <strong>תמונות לדיווח</strong>
+          <button className="button button--icon button--ghost" onClick={onClose}><X size={18} /></button>
+        </div>
+        {loading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 32 }}><span className="spinner" /></div>
+        ) : photos.length === 0 ? (
+          <p style={{ color: 'var(--muted)', textAlign: 'center', padding: '16px 0' }}>אין תמונות לדיווח זה.</p>
+        ) : (
+          <div style={{ overflowY: 'auto' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
+              {photos.map(p => p.url && (
+                <div key={p.id} style={{ aspectRatio: '1', borderRadius: 8, overflow: 'hidden', background: 'var(--border)', cursor: 'pointer' }}
+                  onClick={() => setLightbox(p.url)}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={p.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+      {lightbox && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,.92)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setLightbox(null)}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={lightbox} alt="" style={{ maxWidth: '95vw', maxHeight: '90vh', borderRadius: 8, objectFit: 'contain' }} />
+          <button style={{ position: 'absolute', top: 16, right: 16, background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}><X size={28} /></button>
+        </div>
+      )}
+    </div>
+  )
+}
 
 function thirtyDaysAgo() {
   const d = new Date()
@@ -28,6 +79,8 @@ export default function DeficienciesTab({ refreshKey, inspectors, locations }: P
   const [filters, setFilters] = useState({ status: '', type: '', inspector: '', location: '', from: DEFAULT_FROM, to: '' })
   const [editingNotes, setEditingNotes] = useState<Record<string, string>>({})
   const [savingNotes, setSavingNotes] = useState<Record<string, boolean>>({})
+  const [photoCounts, setPhotoCounts] = useState<Record<string, number>>({})
+  const [photoModalId, setPhotoModalId] = useState<string | null>(null)
 
   useEffect(() => { loadAll(filters.from) }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -38,8 +91,18 @@ export default function DeficienciesTab({ refreshKey, inspectors, locations }: P
       .order('created_at', { ascending: false })
     if (fromDate) q.gte('created_at', fromDate)
     const { data: rpts } = await q
-    setReports((rpts ?? []) as DeficiencyReport[])
+    const list = (rpts ?? []) as DeficiencyReport[]
+    setReports(list)
     setLoading(false)
+
+    if (list.length > 0) {
+      const res = await fetch('/api/admin/report-photo-counts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: list.map(r => r.id) }),
+      })
+      if (res.ok) setPhotoCounts(await res.json())
+    }
   }
 
   async function updateStatus(id: string, status: string) {
@@ -148,12 +211,13 @@ export default function DeficienciesTab({ refreshKey, inspectors, locations }: P
           <div className="tableWrap">
             <table>
               <thead>
-                <tr><th>תאריך</th><th>משגיח</th><th>מקום</th><th>סוג</th><th>פירוט</th><th>סטטוס</th><th>הערות מנהל</th></tr>
+                <tr><th>תאריך</th><th>משגיח</th><th>מקום</th><th>סוג</th><th>פירוט</th><th>סטטוס</th><th>הערות מנהל</th><th>תמונות</th></tr>
               </thead>
               <tbody>
                 {filtered.map(r => {
                   const noteValue = r.id in editingNotes ? editingNotes[r.id] : (r.admin_notes ?? '')
                   const isDirty = r.id in editingNotes && editingNotes[r.id] !== (r.admin_notes ?? '')
+                  const count = photoCounts[r.id] ?? 0
                   return (
                     <tr key={r.id}>
                       <td className="noWrap">{formatDateTime(r.created_at)}</td>
@@ -192,6 +256,15 @@ export default function DeficienciesTab({ refreshKey, inspectors, locations }: P
                           )}
                         </div>
                       </td>
+                      <td>
+                        <button className="button button--icon button--ghost" style={{ position: 'relative' }}
+                          title="צפה בתמונות" onClick={() => setPhotoModalId(r.id)}>
+                          <Camera size={15} />
+                          {count > 0 && (
+                            <span style={{ position: 'absolute', top: 0, right: 0, background: 'var(--primary)', color: '#fff', borderRadius: 99, fontSize: '.6rem', minWidth: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px', lineHeight: 1 }}>{count}</span>
+                          )}
+                        </button>
+                      </td>
                     </tr>
                   )
                 })}
@@ -200,6 +273,10 @@ export default function DeficienciesTab({ refreshKey, inspectors, locations }: P
           </div>}
         </div>
       </div>
+
+      {photoModalId && (
+        <PhotoViewerModal reportId={photoModalId} onClose={() => setPhotoModalId(null)} />
+      )}
     </div>
   )
 }

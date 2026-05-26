@@ -2,8 +2,70 @@
 import { useState, useEffect, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowRight, CheckCircle, AlertTriangle } from 'lucide-react'
+import { ArrowRight, CheckCircle, AlertTriangle, Camera, Trash2 } from 'lucide-react'
 import type { ChecklistItem } from '@/lib/supabase/types'
+
+type VisitPhoto = { id: string; url: string | null }
+
+function PhotoUpload({ visitLogId }: { visitLogId: string }) {
+  const [photos, setPhotos] = useState<VisitPhoto[]>([])
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  async function handleFiles(files: FileList | null) {
+    if (!files) return
+    const remaining = 10 - photos.length
+    const toUpload = Array.from(files).slice(0, remaining)
+    setUploading(true)
+    for (const file of toUpload) {
+      const fd = new FormData()
+      fd.append('visit_log_id', visitLogId)
+      fd.append('file', file)
+      const res = await fetch('/api/inspector/visit-photos', { method: 'POST', body: fd })
+      if (res.ok) {
+        const photo: VisitPhoto = await res.json()
+        setPhotos(prev => [...prev, photo])
+      }
+    }
+    setUploading(false)
+  }
+
+  async function handleDelete(photoId: string) {
+    await fetch(`/api/inspector/visit-photos?id=${photoId}`, { method: 'DELETE' })
+    setPhotos(prev => prev.filter(p => p.id !== photoId))
+  }
+
+  return (
+    <div className="card">
+      <div className="card__header"><div className="card__title">תמונות לביקור ({photos.length}/10)</div></div>
+      <div className="card__body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {photos.length > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
+            {photos.map(p => (
+              <div key={p.id} style={{ position: 'relative', aspectRatio: '1', borderRadius: 8, overflow: 'hidden', background: 'var(--border)' }}>
+                {p.url && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={p.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                )}
+                <button onClick={() => handleDelete(p.id)}
+                  style={{ position: 'absolute', top: 4, right: 4, background: 'rgba(0,0,0,.55)', border: 'none', borderRadius: 6, color: '#fff', width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {photos.length < 10 && (
+          <button className="button button--ghost" style={{ gap: 8 }} disabled={uploading} onClick={() => fileInputRef.current?.click()}>
+            {uploading ? <span className="spinner" style={{ width: 16, height: 16 }} /> : <Camera size={16} />}
+            {uploading ? 'מעלה...' : `הוסף תמונה (${10 - photos.length} נותרו)`}
+          </button>
+        )}
+        <input ref={fileInputRef} type="file" accept="image/*" multiple capture="environment" style={{ display: 'none' }} onChange={e => handleFiles(e.target.files)} />
+      </div>
+    </div>
+  )
+}
 
 type Phase =
   | 'loading'
@@ -243,6 +305,11 @@ function ChecklistInner() {
               </p>
             </div>
           </div>
+        )}
+
+        {/* Photo upload */}
+        {(phase === 'form' || phase === 'confirm-empty' || phase === 'confirm-skip') && visitLogId && (
+          <PhotoUpload visitLogId={visitLogId} />
         )}
 
         {/* Actions */}
