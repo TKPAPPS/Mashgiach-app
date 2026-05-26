@@ -256,13 +256,13 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
                           : <span className="mutedCell">-</span>}
                       </td>
                       <td>
-                        <button
-                          className="button button--icon button--ghost"
-                          style={{ position: 'relative' }}
-                          title="צפה בתמונות"
-                          onClick={() => setPhotoModalId(log.id)}>
-                          <Camera size={15} />
-                          {count > 0 && (
+                        {count > 0 ? (
+                          <button
+                            className="button button--icon button--ghost"
+                            style={{ position: 'relative' }}
+                            title="צפה בתמונות"
+                            onClick={() => setPhotoModalId(log.id)}>
+                            <Camera size={15} />
                             <span style={{
                               position: 'absolute', top: 0, right: 0,
                               background: 'var(--primary)', color: '#fff',
@@ -270,8 +270,8 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
                               display: 'flex', alignItems: 'center', justifyContent: 'center',
                               padding: '0 3px', lineHeight: 1,
                             }}>{count}</span>
-                          )}
-                        </button>
+                          </button>
+                        ) : <span className="mutedCell">-</span>}
                       </td>
                     </tr>
                   )
