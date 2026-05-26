@@ -124,6 +124,7 @@ Fields that require the record ID and stay in `LocationDetailModal` only:
 - Inspector contract view: `GET /api/inspector/contract-url` uses the authenticated user's own profile; inspector cannot fetch another inspector's contract.
 - Both routes handle both raw paths and legacy public URL format (extracts path from URL pattern) to support any rows that may have been stored differently.
 - Do NOT call `getPublicUrl` on the `contracts` bucket; it is private and will 403.
+- Full upload/view QA requires an actual uploaded contract file in the DB; automated QA only verified API auth behavior (401/404). Manual QA still pending (see Phase 4 remaining manual QA).
 
 ## Reports and Logs: 30-day default window
 - `ReportsTab` and `SystemLogsTab` both default to fetching the last 30 days server-side (`.gte('created_at', thirtyDaysAgo)`).
