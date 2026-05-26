@@ -155,8 +155,10 @@ export default function DashboardTab({ refreshKey, inspectors, locations }: Prop
         ].map(({ icon: Icon, label, value }) => (
           <article key={label} className="statCard">
             <div className="statCard__icon"><Icon size={16} aria-hidden /></div>
-            <small>{label}</small>
-            <strong>{value}</strong>
+            <div className="statCard__text">
+              <small>{label}</small>
+              <strong>{value}</strong>
+            </div>
           </article>
         ))}
       </div>

@@ -166,10 +166,11 @@ body {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 16px;
+  padding: 12px 16px;
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
   box-shadow: var(--shadow-sm);
   position: relative;
   overflow: hidden;
@@ -188,9 +189,12 @@ body {
   background: var(--gold-light);
   display: flex; align-items: center; justify-content: center;
   color: var(--gold-dark);
+  flex-shrink: 0;
+  order: 1;
 }
+.statCard__text { display: flex; flex-direction: column; gap: 1px; order: 0; flex: 1; }
 .statCard small { font-size: .8rem; color: var(--muted); }
-.statCard strong { font-size: 1.6rem; font-weight: 700; color: var(--primary); }
+.statCard strong { font-size: 1.4rem; font-weight: 700; color: var(--primary); }
 
 /* ─── Filters ─────────────────────────────────────────── */
 .filtersGrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
