@@ -5,6 +5,7 @@ import { CheckCircle, ArrowRight, Camera } from 'lucide-react'
 
 type ScanResult = {
   success: boolean
+  code?: string
   action_type?: string
   location_name?: string
   location_id?: string
@@ -15,6 +16,7 @@ type ScanResult = {
 export default function ScanPage() {
   const router = useRouter()
   const [result, setResult] = useState<ScanResult | null>(null)
+  const [scanError, setScanError] = useState<string | null>(null)
   const [processing, setProcessing] = useState(false)
   const [cameraError, setCameraError] = useState<string | null>(null)
   const scannerRef = useRef<{ stop: () => Promise<void> } | null>(null)
@@ -47,7 +49,15 @@ export default function ScanPage() {
     })
     const data: ScanResult = await res.json()
 
-    if (data.success && data.action_type === 'exit' && data.has_checklist && data.visit_log_id && data.location_id) {
+    if (!data.success) {
+      setScanError(data.code === 'unauthorized'
+        ? 'אינך משויך למקום זה'
+        : 'קוד QR לא תקין. נסה שוב.')
+      setProcessing(false)
+      return
+    }
+
+    if (data.action_type === 'exit' && data.has_checklist && data.visit_log_id && data.location_id) {
       router.push(`/inspector/checklist?visit_log_id=${data.visit_log_id}&location_id=${data.location_id}`)
       return
     }
@@ -92,9 +102,9 @@ export default function ScanPage() {
   function handleRetry() {
     hasScanned.current = false
     setResult(null)
+    setScanError(null)
     setProcessing(false)
     setCameraError(null)
-    // Remount the scanner by navigating to self
     router.replace('/inspector/scan')
   }
 
@@ -120,12 +130,23 @@ export default function ScanPage() {
                 המשך לרשימת בדיקות
               </button>
             )}
-            <button className="button button--ghost" onClick={handleRetry}>סריקה נוספת</button>
             <button className="button button--ghost" onClick={() => router.push('/inspector')}>
               <ArrowRight size={15} /> חזור לבית
             </button>
           </div>
         </div>
+      </div>
+    )
+  }
+
+  if (scanError) {
+    return (
+      <div className="app" style={{ maxWidth: 480, margin: '0 auto', minHeight: '100svh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 32, textAlign: 'center' }}>
+        <p style={{ color: 'var(--danger)', fontSize: '1rem', maxWidth: 280 }}>{scanError}</p>
+        <button className="button button--primary" onClick={handleRetry}>נסה שוב</button>
+        <button className="button button--ghost" onClick={() => router.push('/inspector')}>
+          <ArrowRight size={15} /> חזור לבית
+        </button>
       </div>
     )
   }

@@ -21,7 +21,6 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (!location) {
-    // Log the failed attempt
     await service.from('visit_logs').insert({
       inspector_id: user.id,
       location_id: null,
@@ -32,8 +31,7 @@ export async function POST(req: NextRequest) {
       internal_status: 'invalid_location',
       qr_code_scanned: qr_code,
     })
-    // Inspector always sees generic success message
-    return NextResponse.json({ success: true, action_type: 'entry', message: 'ok' })
+    return NextResponse.json({ success: false, code: 'invalid_qr' })
   }
 
   // Check inspector is assigned to this location
@@ -55,7 +53,7 @@ export async function POST(req: NextRequest) {
       internal_status: 'unauthorized',
       qr_code_scanned: qr_code,
     })
-    return NextResponse.json({ success: true, action_type: 'entry', location_name: location.name, message: 'ok' })
+    return NextResponse.json({ success: false, code: 'unauthorized' })
   }
 
   // Determine entry or exit based on last log
