@@ -232,10 +232,10 @@ export default function InspectorsTab({ refreshKey, locations, emailMap }: Props
             {saving ? <span className="spinner" /> : 'צור משגיח'}
           </button>
         </>}>
-        <form id="insp-add-form" onSubmit={handleCreateUser} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <label className="field"><span>שם מלא *</span><input name="full_name" required /></label>
-          <label className="field"><span>אימייל *</span><input name="email" type="email" required /></label>
-          <label className="field"><span>סיסמה זמנית *</span><input name="password" type="password" required minLength={6} /></label>
+        <form id="insp-add-form" onSubmit={handleCreateUser} autoComplete="off" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <label className="field"><span>שם מלא *</span><input name="full_name" required autoComplete="off" /></label>
+          <label className="field"><span>אימייל *</span><input name="email" type="email" required autoComplete="off" /></label>
+          <label className="field"><span>סיסמה זמנית *</span><input name="password" type="password" required minLength={6} autoComplete="new-password" /></label>
           <div className="fieldRow">
             <label className="field"><span>תאריך התחלה</span><input name="start_date" type="date" /></label>
             <label className="field"><span>ימי חופש</span><input name="vacation_days" type="number" min={0} defaultValue={0} /></label>
