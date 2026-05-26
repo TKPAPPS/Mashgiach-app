@@ -1,14 +1,14 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  /* Brand palette */
-  --primary:        #62003B;
-  --primary-light:  #8B1A5A;
-  --primary-dark:   #4A002C;
-  --primary-faint:  #F9F1F5;
-  --gold:           #B4781E;
-  --gold-light:     #F7EDD8;
-  --gold-dark:      #8C5C14;
+  /* Brand palette — Thai Kashrut Supervision (navy + gold) */
+  --primary:        #163260;
+  --primary-light:  #1F4484;
+  --primary-dark:   #0C1F40;
+  --primary-faint:  #EEF2FA;
+  --gold:           #C9A044;
+  --gold-light:     #FAF3DC;
+  --gold-dark:      #9E7A20;
 
   /* Semantic */
   --danger:         #dc2626;
@@ -19,21 +19,21 @@
   --success-light:  #dcfce7;
 
   /* Neutrals */
-  --muted:          #71556A;
-  --border:         #E5D6DF;
-  --border-strong:  #C9A8BA;
+  --muted:          #5C6E8A;
+  --border:         #D0DCF0;
+  --border-strong:  #97AECC;
   --bg:             #ffffff;
   --surface:        #ffffff;
-  --text:           #1A0A10;
-  --text-secondary: #5A3D4A;
+  --text:           #081528;
+  --text-secondary: #3A4E6A;
 
   /* Shape */
   --radius:         8px;
   --radius-lg:      12px;
   --radius-xl:      16px;
-  --shadow-sm:      0 1px 3px rgba(98,0,59,.07);
-  --shadow:         0 4px 12px rgba(98,0,59,.10);
-  --shadow-lg:      0 8px 32px rgba(98,0,59,.14);
+  --shadow-sm:      0 1px 3px rgba(22,50,96,.07);
+  --shadow:         0 4px 12px rgba(22,50,96,.10);
+  --shadow-lg:      0 8px 32px rgba(22,50,96,.14);
   --header-h:       58px;
   --bottom-nav-h:   62px;
 }
@@ -66,11 +66,11 @@ body {
   position: sticky;
   top: 0;
   z-index: 100;
-  box-shadow: 0 2px 12px rgba(98,0,59,.25);
+  box-shadow: 0 2px 12px rgba(22,50,96,.25);
   border-bottom: 2px solid var(--gold);
 }
 .appHeader__brand { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
-.appHeader__logo  { height: 34px; width: auto; filter: brightness(0) invert(1); object-fit: contain; }
+.appHeader__logo  { height: 34px; width: auto; object-fit: contain; }
 .appHeader__icon  { opacity: .9; flex-shrink: 0; }
 .appHeader__title { font-size: 1rem; font-weight: 700; letter-spacing: .01em; }
 .appHeader__user  { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.25; }
@@ -116,7 +116,7 @@ body {
 .adminTab--active {
   background: var(--primary);
   color: #fff;
-  box-shadow: 0 2px 8px rgba(98,0,59,.25);
+  box-shadow: 0 2px 8px rgba(22,50,96,.25);
 }
 .adminTab--active::after {
   content: '';
@@ -215,7 +215,7 @@ body {
 }
 .field input:focus, .field select:focus, .field textarea:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(98,0,59,.08);
+  box-shadow: 0 0 0 3px rgba(22,50,96,.08);
 }
 .field textarea { resize: vertical; min-height: 80px; }
 .field--ltr input { direction: ltr; text-align: left; }
@@ -244,13 +244,13 @@ body {
 .button--primary {
   background: var(--primary);
   color: #fff;
-  box-shadow: 0 2px 6px rgba(98,0,59,.2);
+  box-shadow: 0 2px 6px rgba(22,50,96,.2);
 }
-.button--primary:hover:not(:disabled) { background: var(--primary-dark); box-shadow: 0 4px 10px rgba(98,0,59,.3); }
+.button--primary:hover:not(:disabled) { background: var(--primary-dark); box-shadow: 0 4px 10px rgba(22,50,96,.3); }
 .button--gold {
   background: var(--gold);
   color: #fff;
-  box-shadow: 0 2px 6px rgba(180,120,30,.25);
+  box-shadow: 0 2px 6px rgba(201,160,68,.25);
 }
 .button--gold:hover:not(:disabled) { background: var(--gold-dark); }
 .button--danger  { background: var(--danger); color: #fff; }
@@ -275,7 +275,7 @@ body {
 .badge--success { background: var(--success-light); color: var(--success); }
 .badge--warning { background: var(--warning-light); color: var(--warning); }
 .badge--danger  { background: var(--danger-light);  color: var(--danger); }
-.badge--muted   { background: #F3EBF0; color: var(--muted); border: 1px solid var(--border); }
+.badge--muted   { background: #EEF2FA; color: var(--muted); border: 1px solid var(--border); }
 .badge--primary { background: var(--primary-faint); color: var(--primary); }
 .badge--gold    { background: var(--gold-light); color: var(--gold-dark); }
 .badge--info    { background: #EFF6FF; color: #2563eb; }
@@ -334,7 +334,7 @@ tbody td { padding: 10px 12px; vertical-align: middle; }
   display: flex; flex-direction: column; align-items: center; gap: 14px;
   border-bottom: 3px solid var(--gold);
 }
-.loginCard__logo { height: 60px; width: auto; object-fit: contain; filter: brightness(0) invert(1); }
+.loginCard__logo { height: 60px; width: auto; object-fit: contain; }
 .loginCard__subtitle { font-size: .875rem; color: rgba(255,255,255,.75); text-align: center; }
 .loginCard__body { padding: 28px; display: flex; flex-direction: column; gap: 20px; }
 .loginCard__brand { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
@@ -350,7 +350,7 @@ tbody td { padding: 10px 12px; vertical-align: middle; }
 /* ─── Modal ───────────────────────────────────────────── */
 .modalOverlay {
   position: fixed; inset: 0;
-  background: rgba(26,10,16,.5);
+  background: rgba(8,21,40,.5);
   display: flex; align-items: center; justify-content: center;
   z-index: 200; padding: 16px;
   animation: fadeIn .15s ease;
@@ -413,7 +413,7 @@ tbody td { padding: 10px 12px; vertical-align: middle; }
   display: flex; align-items: stretch;
   position: sticky; bottom: 0;
   z-index: 100;
-  box-shadow: 0 -4px 16px rgba(98,0,59,.08);
+  box-shadow: 0 -4px 16px rgba(22,50,96,.08);
 }
 .bottomNavItem {
   flex: 1; display: flex; flex-direction: column;
