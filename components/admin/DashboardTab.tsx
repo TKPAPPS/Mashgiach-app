@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
   CircleCheck, Users, Building2, CalendarDays, AlertTriangle
@@ -15,7 +15,7 @@ type Props = {
 }
 
 export default function DashboardTab({ refreshKey, inspectors, locations }: Props) {
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
   const [logs, setLogs] = useState<VisitLog[]>([])
   const [alerts, setAlerts] = useState<GpsAlert[]>([])
   const [stats, setStats] = useState({ total: 0, inspectors: 0, locations: 0, thisMonth: 0 })
@@ -23,6 +23,10 @@ export default function DashboardTab({ refreshKey, inspectors, locations }: Prop
   const [loading, setLoading] = useState(true)
 
   useEffect(() => { loadAll() }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const id = setInterval(() => loadAll(), 30000)
+    return () => clearInterval(id)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadAll() {
     setLoading(true)
@@ -37,10 +41,10 @@ export default function DashboardTab({ refreshKey, inspectors, locations }: Prop
       { count: inspCount },
     ] = await Promise.all([
       supabase.from('visit_logs')
-        .select('*, inspector:profiles(id,full_name), location:locations(id,name,city)')
+        .select('id,action_type,location_id,inspector_id,internal_status,device_lat,device_lng,distance_meters,created_at,inspector:profiles(id,full_name),location:locations(id,name,city)')
         .order('created_at', { ascending: false }).limit(50),
       supabase.from('gps_alerts')
-        .select('*, inspector:profiles(id,full_name), location:locations(id,name,city)')
+        .select('id,created_at,action_type,distance_meters,read,inspector:profiles(id,full_name),location:locations(id,name,city)')
         .eq('read', false).order('created_at', { ascending: false }).limit(10),
       supabase.from('visit_logs').select('id', { count: 'estimated', head: true }),
       supabase.from('visit_logs').select('id', { count: 'estimated', head: true }).gte('created_at', monthStart),

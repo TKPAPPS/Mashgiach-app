@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Download, Camera, X } from 'lucide-react'
 import { formatDateTime, actionLabel, statusLabel } from '@/lib/utils/format'
@@ -106,7 +106,7 @@ type Props = {
 }
 
 export default function ReportsTab({ refreshKey, inspectors, locations }: Props) {
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
   const [logs, setLogs] = useState<VisitLog[]>([])
   const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState({ from: DEFAULT_FROM, to: '', inspector: '', location: '', action: '' })
@@ -115,6 +115,12 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
   const [timeSpent, setTimeSpent] = useState<Record<string, string>>({})
 
   useEffect(() => { loadAll(filters.from) }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const isFirstRun = useRef(true)
+  useEffect(() => {
+    if (isFirstRun.current) { isFirstRun.current = false; return }
+    loadAll(filters.from)
+  }, [filters.from]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadAll(fromDate = filters.from) {
     setLoading(true)
@@ -206,7 +212,7 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
           </div>
           <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <button className="button button--primary button--sm" onClick={() => loadAll(filters.from)}>טען</button>
-            <span style={{ fontSize: '.8rem', color: 'var(--muted)' }}>מוצגים נתוני 30 הימים האחרונים. לצפייה בנתונים ישנים יותר, שנה את תאריך ההתחלה ולחץ טען.</span>
+            <span style={{ fontSize: '.8rem', color: 'var(--muted)' }}>מוצגים נתוני 30 הימים האחרונים. שינוי תאריך התחלה מרענן אוטומטית.</span>
           </div>
         </div>
       </div>

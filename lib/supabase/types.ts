@@ -169,12 +169,10 @@ export type AdminReportAttachment = {
 export type AdminReportFollowup = {
   id: string
   report_id: string
-  admin_id: string
   text: string
-  is_done: boolean
+  completed: boolean
+  completed_at: string | null
   created_at: string
-  updated_at: string
-  admin?: Pick<Profile, 'id' | 'full_name'>
 }
 
 export type GpsAlert = {
@@ -214,7 +212,7 @@ export type Database = {
       report_photos:             TableDef<ReportPhoto, Omit<ReportPhoto,'id'|'created_at'>, Partial<ReportPhoto>>
       admin_location_reports:    TableDef<AdminLocationReport, Omit<AdminLocationReport,'id'|'created_at'|'updated_at'|'location'|'admin'>, Partial<Omit<AdminLocationReport,'location'|'admin'>>>
       admin_report_attachments:  TableDef<AdminReportAttachment, Omit<AdminReportAttachment,'id'|'created_at'>, Partial<AdminReportAttachment>>
-      admin_report_followups:    TableDef<AdminReportFollowup, Omit<AdminReportFollowup,'id'|'created_at'|'updated_at'|'admin'>, Partial<Omit<AdminReportFollowup,'admin'>>>
+      admin_report_followups:    TableDef<AdminReportFollowup, Omit<AdminReportFollowup,'id'|'created_at'>, Partial<AdminReportFollowup>>
       push_subscriptions:        TableDef<{ id: string; user_id: string; endpoint: string; p256dh: string; auth: string; created_at: string }, { user_id: string; endpoint: string; p256dh: string; auth: string }, { user_id?: string; endpoint?: string; p256dh?: string; auth?: string }>
     }
     Views: Record<string, never>

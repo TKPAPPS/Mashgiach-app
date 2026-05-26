@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
@@ -20,6 +20,7 @@ import AbsencesTab     from './AbsencesTab'
 import SystemLogsTab   from './SystemLogsTab'
 import AdminsTab       from './AdminsTab'
 import AdminReportTab  from './AdminReportTab'
+import { ErrorBoundary } from './ErrorBoundary'
 
 export type SharedInspector = { id: string; full_name: string }
 export type SharedLocation   = { id: string; name: string; city: string | null; status: string }
@@ -42,7 +43,7 @@ const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
 
 export default function AdminShell() {
   const router = useRouter()
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
   const [tab, setTab] = useState<Tab>('dashboard')
   const [mountedTabs, setMountedTabs] = useState<Set<Tab>>(new Set(['dashboard'] as Tab[]))
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -165,52 +166,52 @@ export default function AdminShell() {
 
         {mountedTabs.has('dashboard') && (
           <div style={{ display: tab === 'dashboard' ? undefined : 'none' }}>
-            <DashboardTab refreshKey={refreshKey} inspectors={sharedInspectors} locations={sharedLocations} />
+            <ErrorBoundary><DashboardTab refreshKey={refreshKey} inspectors={sharedInspectors} locations={sharedLocations} /></ErrorBoundary>
           </div>
         )}
         {mountedTabs.has('locations') && (
           <div style={{ display: tab === 'locations' ? undefined : 'none' }}>
-            <LocationsTab refreshKey={refreshKey} />
+            <ErrorBoundary><LocationsTab refreshKey={refreshKey} /></ErrorBoundary>
           </div>
         )}
         {mountedTabs.has('inspectors') && (
           <div style={{ display: tab === 'inspectors' ? undefined : 'none' }}>
-            <InspectorsTab refreshKey={refreshKey} locations={sharedLocations} emailMap={emailMap} />
+            <ErrorBoundary><InspectorsTab refreshKey={refreshKey} locations={sharedLocations} emailMap={emailMap} /></ErrorBoundary>
           </div>
         )}
         {mountedTabs.has('reports') && (
           <div style={{ display: tab === 'reports' ? undefined : 'none' }}>
-            <ReportsTab refreshKey={refreshKey} inspectors={sharedInspectors} locations={sharedLocations} />
+            <ErrorBoundary><ReportsTab refreshKey={refreshKey} inspectors={sharedInspectors} locations={sharedLocations} /></ErrorBoundary>
           </div>
         )}
         {mountedTabs.has('deficiencies') && (
           <div style={{ display: tab === 'deficiencies' ? undefined : 'none' }}>
-            <DeficienciesTab refreshKey={refreshKey} inspectors={sharedInspectors} locations={sharedLocations} />
+            <ErrorBoundary><DeficienciesTab refreshKey={refreshKey} inspectors={sharedInspectors} locations={sharedLocations} /></ErrorBoundary>
           </div>
         )}
         {mountedTabs.has('absences') && (
           <div style={{ display: tab === 'absences' ? undefined : 'none' }}>
-            <AbsencesTab refreshKey={refreshKey} inspectors={sharedInspectors} inspectorLocations={sharedIL} />
+            <ErrorBoundary><AbsencesTab refreshKey={refreshKey} inspectors={sharedInspectors} inspectorLocations={sharedIL} /></ErrorBoundary>
           </div>
         )}
         {mountedTabs.has('checklist') && (
           <div style={{ display: tab === 'checklist' ? undefined : 'none' }}>
-            <ChecklistAdmin refreshKey={refreshKey} />
+            <ErrorBoundary><ChecklistAdmin refreshKey={refreshKey} /></ErrorBoundary>
           </div>
         )}
         {mountedTabs.has('logs') && (
           <div style={{ display: tab === 'logs' ? undefined : 'none' }}>
-            <SystemLogsTab refreshKey={refreshKey} />
+            <ErrorBoundary><SystemLogsTab refreshKey={refreshKey} /></ErrorBoundary>
           </div>
         )}
         {mountedTabs.has('admins') && (
           <div style={{ display: tab === 'admins' ? undefined : 'none' }}>
-            <AdminsTab refreshKey={refreshKey} emailMap={emailMap} currentUserId={profile?.id ?? null} />
+            <ErrorBoundary><AdminsTab refreshKey={refreshKey} emailMap={emailMap} currentUserId={profile?.id ?? null} /></ErrorBoundary>
           </div>
         )}
         {mountedTabs.has('adminreports') && (
           <div style={{ display: tab === 'adminreports' ? undefined : 'none' }}>
-            <AdminReportTab refreshKey={refreshKey} locations={sharedLocations} />
+            <ErrorBoundary><AdminReportTab refreshKey={refreshKey} locations={sharedLocations} /></ErrorBoundary>
           </div>
         )}
       </main>

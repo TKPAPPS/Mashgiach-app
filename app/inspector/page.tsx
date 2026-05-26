@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { MapPin, QrCode, AlertTriangle, Calendar, User, LogOut, Camera, Trash2 } from 'lucide-react'
@@ -11,7 +11,7 @@ type LocationWithLastVisit = Location & { lastVisit?: VisitLog }
 type ReplacementInspector = { id: string; full_name: string }
 
 export default function InspectorHome() {
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [userEmail, setUserEmail] = useState<string | null>(null)
@@ -26,8 +26,10 @@ export default function InspectorHome() {
   }, [])
 
   async function loadAll() {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { router.push('/login'); return }
+    // getSession reads from cookie — no network round-trip. RLS enforces real auth on every DB call.
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.user) { router.push('/login'); return }
+    const user = session.user
     setUserEmail(user.email ?? null)
 
     const [{ data: prof }, { data: il }, { data: recentVisits }] = await Promise.all([
@@ -126,14 +128,18 @@ export default function InspectorHome() {
         {activeTab === 'report' && (
           <div style={{ paddingTop: 8 }}>
             <div style={{ fontWeight: 700, fontSize: '1.05rem', marginBottom: 16 }}>דיווח ליקוי / הערה</div>
-            <ReportForm profile={profile} locations={locations} />
+            {loading
+              ? <div className="emptyState"><span className="spinner" /></div>
+              : <ReportForm profile={profile} locations={locations} />}
           </div>
         )}
 
         {activeTab === 'absence' && (
           <div style={{ paddingTop: 8 }}>
             <div style={{ fontWeight: 700, fontSize: '1.05rem', marginBottom: 16 }}>בקשת היעדרות / חופש</div>
-            <AbsenceForm profile={profile} locations={locations} />
+            {loading
+              ? <div className="emptyState"><span className="spinner" /></div>
+              : <AbsenceForm profile={profile} locations={locations} />}
           </div>
         )}
 

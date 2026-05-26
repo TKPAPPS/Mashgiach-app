@@ -30,9 +30,9 @@ type Attachment = {
 type Followup = {
   id: string
   text: string
-  is_done: boolean
+  completed: boolean
+  completed_at: string | null
   created_at: string
-  admin: { id: string; full_name: string } | null
 }
 
 type Props = {
@@ -289,7 +289,7 @@ function FollowupsPanel({ reportId }: { reportId: string }) {
     const res = await fetch('/api/admin/location-report-followups', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: f.id, is_done: !f.is_done }),
+      body: JSON.stringify({ id: f.id, completed: !f.completed }),
     })
     if (res.ok) {
       const updated = await res.json()
@@ -302,8 +302,8 @@ function FollowupsPanel({ reportId }: { reportId: string }) {
     setFollowups(prev => prev.filter(f => f.id !== id))
   }
 
-  const open = followups.filter(f => !f.is_done)
-  const done = followups.filter(f => f.is_done)
+  const open = followups.filter(f => !f.completed)
+  const done = followups.filter(f => f.completed)
 
   return (
     <div>

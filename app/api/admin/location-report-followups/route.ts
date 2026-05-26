@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
   const service = createServiceClient()
   const { data, error } = await service
     .from('admin_report_followups')
-    .select('id,report_id,admin_id,text,is_done,created_at,updated_at,admin:profiles(id,full_name)')
+    .select('id,report_id,text,completed,completed_at,created_at')
     .eq('report_id', report_id)
     .order('created_at')
 
@@ -38,8 +38,8 @@ export async function POST(req: NextRequest) {
   const service = createServiceClient()
   const { data, error } = await service
     .from('admin_report_followups')
-    .insert({ report_id, admin_id: user.id, text: text.trim(), is_done: false })
-    .select('id,report_id,admin_id,text,is_done,created_at,updated_at,admin:profiles(id,full_name)')
+    .insert({ report_id, text: text.trim(), completed: false, completed_at: null })
+    .select('id,report_id,text,completed,completed_at,created_at')
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -50,19 +50,22 @@ export async function PATCH(req: NextRequest) {
   const user = await requireAdmin()
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { id, text, is_done } = await req.json()
+  const { id, text, completed } = await req.json()
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
   const service = createServiceClient()
-  const updates: Partial<{ text: string; is_done: boolean; updated_at: string }> = { updated_at: new Date().toISOString() }
+  const updates: Partial<{ text: string; completed: boolean; completed_at: string | null }> = {}
   if (text !== undefined) updates.text = text
-  if (is_done !== undefined) updates.is_done = is_done
+  if (completed !== undefined) {
+    updates.completed = completed
+    updates.completed_at = completed ? new Date().toISOString() : null
+  }
 
   const { data, error } = await service
     .from('admin_report_followups')
     .update(updates)
     .eq('id', id)
-    .select('id,report_id,admin_id,text,is_done,created_at,updated_at,admin:profiles(id,full_name)')
+    .select('id,report_id,text,completed,completed_at,created_at')
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
