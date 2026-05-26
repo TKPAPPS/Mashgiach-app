@@ -126,6 +126,15 @@ export type SystemLog = {
   location?: Pick<Location, 'id' | 'name'>
 }
 
+export type VisitPhoto = {
+  id: string
+  visit_log_id: string
+  inspector_id: string
+  location_id: string | null
+  photo_path: string
+  created_at: string
+}
+
 export type GpsAlert = {
   id: string
   visit_log_id: string | null
@@ -159,6 +168,7 @@ export type Database = {
       absence_requests:    TableDef<AbsenceRequest, Omit<AbsenceRequest,'id'|'created_at'|'admin_status'|'admin_notes'|'inspector'|'location'|'replacement_inspector'> & { admin_status?: AbsenceAdminStatus; admin_notes?: string | null }, Partial<Omit<AbsenceRequest,'inspector'|'location'|'replacement_inspector'>>>
       system_logs:         TableDef<SystemLog, Omit<SystemLog,'id'|'created_at'|'performer'|'location'>, Partial<Omit<SystemLog,'performer'|'location'>>>
       gps_alerts:          TableDef<GpsAlert, Omit<GpsAlert,'id'|'created_at'|'inspector'|'location'>, Partial<Omit<GpsAlert,'inspector'|'location'>>>
+      visit_photos:        TableDef<VisitPhoto, Omit<VisitPhoto,'id'|'created_at'>, Partial<VisitPhoto>>
       push_subscriptions:  TableDef<{ id: string; user_id: string; endpoint: string; p256dh: string; auth: string; created_at: string }, { user_id: string; endpoint: string; p256dh: string; auth: string }, { user_id?: string; endpoint?: string; p256dh?: string; auth?: string }>
     }
     Views: Record<string, never>

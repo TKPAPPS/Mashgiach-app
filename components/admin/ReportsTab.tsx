@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Download } from 'lucide-react'
+import { Download, Camera, X } from 'lucide-react'
 import { formatDateTime, actionLabel, statusLabel } from '@/lib/utils/format'
 import { exportToExcel } from '@/lib/utils/excel'
 import type { VisitLog } from '@/lib/supabase/types'
@@ -15,6 +15,68 @@ function thirtyDaysAgo() {
 
 const DEFAULT_FROM = thirtyDaysAgo()
 
+type VisitPhoto = { id: string; url: string | null; created_at: string }
+
+function PhotoViewerModal({ visitLogId, onClose }: { visitLogId: string; onClose: () => void }) {
+  const [photos, setPhotos] = useState<VisitPhoto[]>([])
+  const [loading, setLoading] = useState(true)
+  const [lightbox, setLightbox] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch(`/api/admin/visit-photos?visit_log_id=${visitLogId}`)
+      .then(r => r.json())
+      .then(data => { setPhotos(Array.isArray(data) ? data : []); setLoading(false) })
+  }, [visitLogId])
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 1000,
+      background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }} onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={{
+        background: '#fff', borderRadius: 12, width: '100%', maxWidth: 560,
+        margin: '0 16px', padding: '20px 16px 24px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', gap: 16,
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <strong>תמונות לביקור</strong>
+          <button className="button button--icon button--ghost" onClick={onClose}><X size={18} /></button>
+        </div>
+
+        {loading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 32 }}><span className="spinner" /></div>
+        ) : photos.length === 0 ? (
+          <p style={{ color: 'var(--muted)', textAlign: 'center', padding: '16px 0' }}>אין תמונות לביקור זה.</p>
+        ) : (
+          <div style={{ overflowY: 'auto' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
+              {photos.map(p => p.url && (
+                <div key={p.id} style={{ aspectRatio: '1', borderRadius: 8, overflow: 'hidden', background: 'var(--border)', cursor: 'pointer' }}
+                  onClick={() => setLightbox(p.url)}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={p.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {lightbox && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 1100,
+          background: 'rgba(0,0,0,.92)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }} onClick={() => setLightbox(null)}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={lightbox} alt="" style={{ maxWidth: '95vw', maxHeight: '90vh', borderRadius: 8, objectFit: 'contain' }} />
+          <button style={{ position: 'absolute', top: 16, right: 16, background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}>
+            <X size={28} />
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 type Props = {
   refreshKey: number
   inspectors: SharedInspector[]
@@ -26,6 +88,8 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
   const [logs, setLogs] = useState<VisitLog[]>([])
   const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState({ from: DEFAULT_FROM, to: '', inspector: '', location: '', action: '' })
+  const [photoCounts, setPhotoCounts] = useState<Record<string, number>>({})
+  const [photoModalId, setPhotoModalId] = useState<string | null>(null)
 
   useEffect(() => { loadAll(filters.from) }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -37,8 +101,19 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
       .limit(500)
     if (fromDate) q.gte('created_at', fromDate)
     const { data: logsData } = await q
-    setLogs((logsData ?? []) as VisitLog[])
+    const list = (logsData ?? []) as VisitLog[]
+    setLogs(list)
     setLoading(false)
+
+    // Batch-fetch photo counts (single query)
+    if (list.length > 0) {
+      const res = await fetch('/api/admin/visit-photo-counts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: list.map(l => l.id) }),
+      })
+      if (res.ok) setPhotoCounts(await res.json())
+    }
   }
 
   const filtered = logs.filter(l => {
@@ -61,6 +136,7 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
       'קו רוחב': l.device_lat ?? '',
       'קו אורך': l.device_lng ?? '',
       'מרחק (מ׳)': l.distance_meters ?? '',
+      'תמונות': photoCounts[l.id] ?? 0,
     }))
     exportToExcel(rows, `דיווחים_${new Date().toLocaleDateString('he-IL').replace(/\//g, '-')}`, 'דיווחים')
   }
@@ -126,7 +202,7 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
               <thead>
                 <tr>
                   <th>תאריך ושעה</th><th>פעולה</th><th>משגיח</th><th>מקום</th>
-                  <th>עיר</th><th>סטטוס</th><th>מרחק</th><th>GPS</th>
+                  <th>עיר</th><th>סטטוס</th><th>מרחק</th><th>GPS</th><th>תמונות</th>
                 </tr>
               </thead>
               <tbody>
@@ -134,6 +210,7 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
                   const { label, cls } = statusLabel(log.internal_status)
                   const insp = log.inspector as { full_name: string } | undefined
                   const loc = log.location as { name: string; city: string | null } | undefined
+                  const count = photoCounts[log.id] ?? 0
                   return (
                     <tr key={log.id}>
                       <td className="noWrap">{formatDateTime(log.created_at)}</td>
@@ -152,6 +229,24 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
                             </a>
                           : <span className="mutedCell">-</span>}
                       </td>
+                      <td>
+                        <button
+                          className="button button--icon button--ghost"
+                          style={{ position: 'relative' }}
+                          title="צפה בתמונות"
+                          onClick={() => setPhotoModalId(log.id)}>
+                          <Camera size={15} />
+                          {count > 0 && (
+                            <span style={{
+                              position: 'absolute', top: 0, right: 0,
+                              background: 'var(--primary)', color: '#fff',
+                              borderRadius: 99, fontSize: '.6rem', minWidth: 14, height: 14,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              padding: '0 3px', lineHeight: 1,
+                            }}>{count}</span>
+                          )}
+                        </button>
+                      </td>
                     </tr>
                   )
                 })}
@@ -160,6 +255,10 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
           </div>}
         </div>
       </div>
+
+      {photoModalId && (
+        <PhotoViewerModal visitLogId={photoModalId} onClose={() => setPhotoModalId(null)} />
+      )}
     </div>
   )
 }
