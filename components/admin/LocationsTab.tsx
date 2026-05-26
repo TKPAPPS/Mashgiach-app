@@ -75,7 +75,9 @@ function LocationForm({
   )
 }
 
-export default function LocationsTab() {
+type Props = { refreshKey: number }
+
+export default function LocationsTab({ refreshKey }: Props) {
   const supabase = createClient()
   const { toast } = useToast()
   const [locations, setLocations] = useState<Location[]>([])
@@ -88,13 +90,19 @@ export default function LocationsTab() {
   const qrCanvasRef = useRef<HTMLCanvasElement>(null)
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase.from('locations').select('*').order('name')
-    setLocations(data ?? [])
+    const { data } = await supabase.from('locations')
+      .select('id,name,city,address,qr_code,lat,lng,status').order('name')
+    setLocations((data ?? []) as Location[])
     setLoading(false)
+  }
+
+  async function openForEdit(loc: Location) {
+    const { data } = await supabase.from('locations').select('*').eq('id', loc.id).single()
+    setEditLoc((data ?? loc) as Location)
   }
 
   async function handleSave(e: FormEvent<HTMLFormElement>) {
@@ -194,7 +202,7 @@ export default function LocationsTab() {
                       <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
                         <button className="button button--icon button--ghost" title="פרטים מלאים" onClick={() => setDetailLoc(loc)}><Eye size={15} /></button>
                         <button className="button button--icon button--ghost" title="הצג QR" onClick={() => setQrLoc(loc)}><QrCode size={15} /></button>
-                        <button className="button button--icon button--ghost" title="עריכה" onClick={() => setEditLoc(loc)}><Pen size={15} /></button>
+                        <button className="button button--icon button--ghost" title="עריכה" onClick={() => openForEdit(loc)}><Pen size={15} /></button>
                         <button className="button button--icon button--ghost" title="מחיקה"
                           style={{ color: 'var(--danger)' }} onClick={() => setDeleteId(loc.id)}><Trash2 size={15} /></button>
                       </div>

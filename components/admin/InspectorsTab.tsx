@@ -5,13 +5,19 @@ import { Plus, Pen, Trash2, Upload, ExternalLink, Eye, KeyRound } from 'lucide-r
 import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import { formatDate } from '@/lib/utils/format'
-import type { Profile, Location } from '@/lib/supabase/types'
+import type { Profile } from '@/lib/supabase/types'
+import type { SharedLocation } from './AdminShell'
 
-export default function InspectorsTab() {
+type Props = {
+  refreshKey: number
+  locations: SharedLocation[]
+  emailMap: Record<string, string | null>
+}
+
+export default function InspectorsTab({ refreshKey, locations, emailMap }: Props) {
   const supabase = createClient()
   const { toast } = useToast()
   const [inspectors, setInspectors] = useState<Profile[]>([])
-  const [locations, setLocations] = useState<Location[]>([])
   const [loading, setLoading] = useState(true)
   const [addOpen, setAddOpen] = useState(false)
   const [editInsp, setEditInsp] = useState<Profile | null>(null)
@@ -20,33 +26,23 @@ export default function InspectorsTab() {
   const [saving, setSaving] = useState(false)
   const [resetInsp, setResetInsp] = useState<Profile | null>(null)
   const [assignedLocs, setAssignedLocs] = useState<Record<string, string[]>>({})
-  const [emailMap, setEmailMap] = useState<Record<string, string | null>>({})
   const [contractLoading, setContractLoading] = useState<Record<string, boolean>>({})
 
-  useEffect(() => { loadAll() }, [])
+  useEffect(() => { loadAll() }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadAll() {
     setLoading(true)
-    const [{ data: insp }, { data: locs }, { data: il }, emailsRes] = await Promise.all([
+    const [{ data: insp }, { data: il }] = await Promise.all([
       supabase.from('profiles').select('*').eq('role', 'mashgiach').order('full_name'),
-      supabase.from('locations').select('id,name,city,status').order('name'),
       supabase.from('inspector_locations').select('inspector_id,location_id'),
-      fetch('/api/admin/users'),
     ])
     setInspectors((insp ?? []) as Profile[])
-    setLocations((locs ?? []) as Location[])
     const map: Record<string, string[]> = {}
     for (const row of (il ?? [])) {
       if (!map[row.inspector_id]) map[row.inspector_id] = []
       map[row.inspector_id].push(row.location_id)
     }
     setAssignedLocs(map)
-    if (emailsRes.ok) {
-      const emailList: { id: string; email: string | null }[] = await emailsRes.json()
-      const em: Record<string, string | null> = {}
-      for (const e of emailList) em[e.id] = e.email
-      setEmailMap(em)
-    }
     setLoading(false)
   }
 

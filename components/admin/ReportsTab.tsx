@@ -5,6 +5,7 @@ import { Download } from 'lucide-react'
 import { formatDateTime, actionLabel, statusLabel } from '@/lib/utils/format'
 import { exportToExcel } from '@/lib/utils/excel'
 import type { VisitLog } from '@/lib/supabase/types'
+import type { SharedInspector, SharedLocation } from './AdminShell'
 
 function thirtyDaysAgo() {
   const d = new Date()
@@ -14,15 +15,19 @@ function thirtyDaysAgo() {
 
 const DEFAULT_FROM = thirtyDaysAgo()
 
-export default function ReportsTab() {
+type Props = {
+  refreshKey: number
+  inspectors: SharedInspector[]
+  locations: SharedLocation[]
+}
+
+export default function ReportsTab({ refreshKey, inspectors, locations }: Props) {
   const supabase = createClient()
   const [logs, setLogs] = useState<VisitLog[]>([])
   const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState({ from: DEFAULT_FROM, to: '', inspector: '', location: '', action: '' })
-  const [inspectorList, setInspectorList] = useState<{ id: string; full_name: string }[]>([])
-  const [locationList, setLocationList] = useState<{ id: string; name: string }[]>([])
 
-  useEffect(() => { loadAll(DEFAULT_FROM) }, [])
+  useEffect(() => { loadAll(filters.from) }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadAll(fromDate = filters.from) {
     setLoading(true)
@@ -31,14 +36,8 @@ export default function ReportsTab() {
       .order('created_at', { ascending: false })
       .limit(500)
     if (fromDate) q.gte('created_at', fromDate)
-    const [{ data: logsData }, { data: insp }, { data: locs }] = await Promise.all([
-      q,
-      supabase.from('profiles').select('id,full_name').eq('role', 'mashgiach').order('full_name'),
-      supabase.from('locations').select('id,name').order('name'),
-    ])
+    const { data: logsData } = await q
     setLogs((logsData ?? []) as VisitLog[])
-    setInspectorList(insp ?? [])
-    setLocationList(locs ?? [])
     setLoading(false)
   }
 
@@ -85,14 +84,14 @@ export default function ReportsTab() {
               <select value={filters.inspector}
                 onChange={e => setFilters(f => ({ ...f, inspector: e.target.value }))}>
                 <option value="">הכל</option>
-                {inspectorList.map(i => <option key={i.id} value={i.id}>{i.full_name}</option>)}
+                {inspectors.map(i => <option key={i.id} value={i.id}>{i.full_name}</option>)}
               </select>
             </label>
             <label className="field"><span>מקום</span>
               <select value={filters.location}
                 onChange={e => setFilters(f => ({ ...f, location: e.target.value }))}>
                 <option value="">הכל</option>
-                {locationList.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
               </select>
             </label>
             <label className="field"><span>סוג פעולה</span>

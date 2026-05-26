@@ -7,6 +7,7 @@ import { useToast } from '@/components/ui/Toast'
 import { formatDate, requestTypeLabel } from '@/lib/utils/format'
 import { exportToExcel } from '@/lib/utils/excel'
 import type { AbsenceRequest, AbsenceAdminStatus } from '@/lib/supabase/types'
+import type { SharedInspector, SharedIL } from './AdminShell'
 
 const STATUS_LABELS: Record<AbsenceAdminStatus, string> = {
   pending:  'ממתין',
@@ -27,7 +28,13 @@ const TYPE_COLORS: Record<string, string> = {
   other:       'badge--muted',
 }
 
-export default function AbsencesTab() {
+type Props = {
+  refreshKey: number
+  inspectors: SharedInspector[]
+  inspectorLocations: SharedIL[]
+}
+
+export default function AbsencesTab({ refreshKey, inspectors, inspectorLocations }: Props) {
   const supabase = createClient()
   const { toast } = useToast()
   const [requests, setRequests] = useState<AbsenceRequest[]>([])
@@ -36,30 +43,24 @@ export default function AbsencesTab() {
   const [statusFilter, setStatusFilter] = useState('')
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [editingNotes, setEditingNotes] = useState<Record<string, string>>({})
-  const [allInspectors, setAllInspectors] = useState<{ id: string; full_name: string }[]>([])
-  const [locationInspectors, setLocationInspectors] = useState<Record<string, string[]>>({})
 
-  useEffect(() => { loadAll() }, [])
+  useEffect(() => { loadAll() }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadAll() {
     setLoading(true)
-    const [{ data }, { data: insp }, { data: il }] = await Promise.all([
-      supabase
-        .from('absence_requests')
-        .select('*, inspector:profiles(id,full_name), location:locations(id,name), replacement_inspector:profiles!absence_requests_replacement_inspector_id_fkey(id,full_name)')
-        .order('created_at', { ascending: false }),
-      supabase.from('profiles').select('id,full_name').eq('role', 'mashgiach').order('full_name'),
-      supabase.from('inspector_locations').select('inspector_id,location_id'),
-    ])
+    const { data } = await supabase
+      .from('absence_requests')
+      .select('*, inspector:profiles(id,full_name), location:locations(id,name), replacement_inspector:profiles!absence_requests_replacement_inspector_id_fkey(id,full_name)')
+      .order('created_at', { ascending: false })
     setRequests((data ?? []) as AbsenceRequest[])
-    setAllInspectors((insp ?? []) as { id: string; full_name: string }[])
-    const locMap: Record<string, string[]> = {}
-    for (const row of (il ?? [])) {
-      if (!locMap[row.location_id]) locMap[row.location_id] = []
-      locMap[row.location_id].push(row.inspector_id)
-    }
-    setLocationInspectors(locMap)
     setLoading(false)
+  }
+
+  // Build location -> inspector[] map from shared prop
+  const locationInspectors: Record<string, string[]> = {}
+  for (const row of inspectorLocations) {
+    if (!locationInspectors[row.location_id]) locationInspectors[row.location_id] = []
+    locationInspectors[row.location_id].push(row.inspector_id)
   }
 
   async function updateStatus(id: string, admin_status: AbsenceAdminStatus) {
@@ -178,8 +179,8 @@ export default function AbsencesTab() {
                         const locId = r.location_id
                         const assignedIds = new Set(locId ? (locationInspectors[locId] ?? []) : [])
                         const hasAssigned = assignedIds.size > 0 && !!locId
-                        const assigned = hasAssigned ? allInspectors.filter(i => assignedIds.has(i.id)) : []
-                        const others = hasAssigned ? allInspectors.filter(i => !assignedIds.has(i.id)) : allInspectors
+                        const assigned = hasAssigned ? inspectors.filter(i => assignedIds.has(i.id)) : []
+                        const others = hasAssigned ? inspectors.filter(i => !assignedIds.has(i.id)) : inspectors
                         return (
                           <select
                             value={r.replacement_inspector_id ?? ''}

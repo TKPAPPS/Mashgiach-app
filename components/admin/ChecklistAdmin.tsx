@@ -6,7 +6,9 @@ import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import type { ChecklistItem } from '@/lib/supabase/types'
 
-export default function ChecklistAdmin() {
+type Props = { refreshKey: number }
+
+export default function ChecklistAdmin({ refreshKey }: Props) {
   const supabase = createClient()
   const { toast } = useToast()
   const [items, setItems] = useState<ChecklistItem[]>([])
@@ -16,7 +18,7 @@ export default function ChecklistAdmin() {
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => { loadItems() }, [])
+  useEffect(() => { loadItems() }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadItems() {
     setLoading(true)

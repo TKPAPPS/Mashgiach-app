@@ -209,6 +209,35 @@ Alerts appear on the admin Dashboard when an inspector scans from > 100m away.
 - If a password must be changed for testing, restore it immediately after the test and confirm restoration.
 - Admin password changes require explicit user approval each time, even in a QA context. Prior approval for one QA run does not carry over.
 
+## Admin panel performance architecture
+
+These patterns were introduced in the Perf Patch (2026-05-26) and must be preserved in future work.
+
+### Lazy tab mounting
+Tabs in `AdminShell` use a `mountedTabs: Set<Tab>` pattern. A tab mounts only on first visit; after that it stays in the DOM hidden with `display: none`. Do not unmount tabs on tab switch; do not reset `mountedTabs` on refresh.
+
+```tsx
+{mountedTabs.has('dashboard') && (
+  <div style={{ display: tab === 'dashboard' ? undefined : 'none' }}>
+    <DashboardTab ... />
+  </div>
+)}
+```
+
+### Shared lookup data at AdminShell level
+`AdminShell` fetches `profiles`, `locations`, `inspector_locations`, and `/api/admin/users` once in `loadShared()` and passes them as props. Do not re-fetch these in child tabs. Exported types live in `AdminShell.tsx`: `SharedInspector`, `SharedLocation`, `SharedIL`.
+
+`loadShared()` runs on mount (in parallel with auth check) and on every refresh button press. It does NOT run on tab switch.
+
+### refreshKey as shared effect dependency
+Each tab uses `useEffect(() => { loadAll() }, [refreshKey])`. On mount `refreshKey === 0` and date filters are already initialized to `DEFAULT_FROM`, so no double-load. On refresh, `refreshKey` increments and the tab re-fetches with the current filter state.
+
+### LocationsTab edit pattern
+`LocationsTab` list query selects only display columns. When the admin clicks edit, `openForEdit()` fetches the full record (`select('*')`) for the single location before opening the modal. This keeps the list query narrow while giving the edit form complete data.
+
+### LocationDetailModal form key trick
+`LocationDetailModal` fetches the full location record in its own `loadAll()` as a 6th parallel query. Forms that use `defaultValue` must have `key={location.updated_at ?? 'loading'}` so React re-mounts them when async data arrives.
+
 ## Known lint patterns (future cleanup)
 13+ files use `useEffect(() => { loadFn() }, [])` with an async inner function that calls `setState`. This triggers `react-hooks/exhaustive-deps` warnings. The pattern is intentional (load-once on mount). Fixing all instances requires systematic `useCallback` or `.then()` refactoring across the codebase. Deferred to a dedicated future cleanup phase. Do not fix as part of feature work unless the file is already being substantially rewritten.
 

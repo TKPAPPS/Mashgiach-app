@@ -19,6 +19,10 @@ import ChecklistAdmin  from './ChecklistAdmin'
 import AbsencesTab     from './AbsencesTab'
 import SystemLogsTab   from './SystemLogsTab'
 
+export type SharedInspector = { id: string; full_name: string }
+export type SharedLocation   = { id: string; name: string; city: string | null; status: string }
+export type SharedIL         = { inspector_id: string; location_id: string }
+
 type Tab = 'dashboard' | 'locations' | 'inspectors' | 'reports' | 'deficiencies' | 'checklist' | 'absences' | 'logs'
 
 const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
@@ -36,8 +40,14 @@ export default function AdminShell() {
   const router = useRouter()
   const supabase = createClient()
   const [tab, setTab] = useState<Tab>('dashboard')
+  const [mountedTabs, setMountedTabs] = useState<Set<Tab>>(new Set(['dashboard'] as Tab[]))
   const [profile, setProfile] = useState<Profile | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
+
+  const [sharedInspectors, setSharedInspectors] = useState<SharedInspector[]>([])
+  const [sharedLocations,  setSharedLocations]  = useState<SharedLocation[]>([])
+  const [sharedIL,         setSharedIL]         = useState<SharedIL[]>([])
+  const [emailMap,         setEmailMap]         = useState<Record<string, string | null>>({})
 
   useEffect(() => {
     if (process.env.NEXT_PUBLIC_DEV_BYPASS === 'true') {
@@ -51,7 +61,31 @@ export default function AdminShell() {
       supabase.from('profiles').select('*').eq('id', user.id).single()
         .then(({ data }) => setProfile(data))
     })
-  }, [])
+    loadShared()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function loadShared() {
+    const [{ data: insp }, { data: locs }, { data: il }, emailsRes] = await Promise.all([
+      supabase.from('profiles').select('id,full_name').eq('role', 'mashgiach').order('full_name'),
+      supabase.from('locations').select('id,name,city,status').order('name'),
+      supabase.from('inspector_locations').select('inspector_id,location_id'),
+      fetch('/api/admin/users'),
+    ])
+    setSharedInspectors((insp ?? []) as SharedInspector[])
+    setSharedLocations((locs ?? []) as SharedLocation[])
+    setSharedIL((il ?? []) as SharedIL[])
+    if (emailsRes.ok) {
+      const emailList: { id: string; email: string | null }[] = await emailsRes.json()
+      const em: Record<string, string | null> = {}
+      for (const e of emailList) em[e.id] = e.email
+      setEmailMap(em)
+    }
+  }
+
+  function handleTabChange(newTab: Tab) {
+    setTab(newTab)
+    setMountedTabs(prev => new Set([...prev, newTab]))
+  }
 
   async function logout() {
     if (process.env.NEXT_PUBLIC_DEV_BYPASS === 'true') return
@@ -59,7 +93,10 @@ export default function AdminShell() {
     router.push('/login')
   }
 
-  function refresh() { setRefreshKey(k => k + 1) }
+  function refresh() {
+    setRefreshKey(k => k + 1)
+    loadShared()
+  }
 
   return (
     <div className="app">
@@ -101,7 +138,7 @@ export default function AdminShell() {
               className={`adminTab${tab === id ? ' adminTab--active' : ''}`}
               role="tab"
               aria-selected={tab === id}
-              onClick={() => setTab(id)}
+              onClick={() => handleTabChange(id)}
               type="button"
             >
               <Icon size={15} aria-hidden />
@@ -110,14 +147,46 @@ export default function AdminShell() {
           ))}
         </div>
 
-        {tab === 'dashboard'    && <DashboardTab    key={refreshKey} />}
-        {tab === 'locations'    && <LocationsTab    key={refreshKey} />}
-        {tab === 'inspectors'   && <InspectorsTab   key={refreshKey} />}
-        {tab === 'reports'      && <ReportsTab      key={refreshKey} />}
-        {tab === 'deficiencies' && <DeficienciesTab key={refreshKey} />}
-        {tab === 'absences'     && <AbsencesTab     key={refreshKey} />}
-        {tab === 'checklist'    && <ChecklistAdmin  key={refreshKey} />}
-        {tab === 'logs'         && <SystemLogsTab   key={refreshKey} />}
+        {mountedTabs.has('dashboard') && (
+          <div style={{ display: tab === 'dashboard' ? undefined : 'none' }}>
+            <DashboardTab refreshKey={refreshKey} inspectors={sharedInspectors} locations={sharedLocations} />
+          </div>
+        )}
+        {mountedTabs.has('locations') && (
+          <div style={{ display: tab === 'locations' ? undefined : 'none' }}>
+            <LocationsTab refreshKey={refreshKey} />
+          </div>
+        )}
+        {mountedTabs.has('inspectors') && (
+          <div style={{ display: tab === 'inspectors' ? undefined : 'none' }}>
+            <InspectorsTab refreshKey={refreshKey} locations={sharedLocations} emailMap={emailMap} />
+          </div>
+        )}
+        {mountedTabs.has('reports') && (
+          <div style={{ display: tab === 'reports' ? undefined : 'none' }}>
+            <ReportsTab refreshKey={refreshKey} inspectors={sharedInspectors} locations={sharedLocations} />
+          </div>
+        )}
+        {mountedTabs.has('deficiencies') && (
+          <div style={{ display: tab === 'deficiencies' ? undefined : 'none' }}>
+            <DeficienciesTab refreshKey={refreshKey} inspectors={sharedInspectors} locations={sharedLocations} />
+          </div>
+        )}
+        {mountedTabs.has('absences') && (
+          <div style={{ display: tab === 'absences' ? undefined : 'none' }}>
+            <AbsencesTab refreshKey={refreshKey} inspectors={sharedInspectors} inspectorLocations={sharedIL} />
+          </div>
+        )}
+        {mountedTabs.has('checklist') && (
+          <div style={{ display: tab === 'checklist' ? undefined : 'none' }}>
+            <ChecklistAdmin refreshKey={refreshKey} />
+          </div>
+        )}
+        {mountedTabs.has('logs') && (
+          <div style={{ display: tab === 'logs' ? undefined : 'none' }}>
+            <SystemLogsTab refreshKey={refreshKey} />
+          </div>
+        )}
       </main>
     </div>
   )

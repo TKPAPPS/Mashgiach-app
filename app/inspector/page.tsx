@@ -28,7 +28,7 @@ export default function InspectorHome() {
 
     const [{ data: prof }, { data: il }, { data: recentVisits }] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', user.id).single(),
-      supabase.from('inspector_locations').select('location_id, location:locations(*)').eq('inspector_id', user.id),
+      supabase.from('inspector_locations').select('location_id, location:locations(id,name,city,address,status)').eq('inspector_id', user.id),
       supabase.from('visit_logs').select('*').eq('inspector_id', user.id).order('created_at', { ascending: false }).limit(50),
     ])
 

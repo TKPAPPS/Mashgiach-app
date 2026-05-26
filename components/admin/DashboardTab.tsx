@@ -2,49 +2,60 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
-  CircleCheck, Users, Building2, CalendarDays, AlertTriangle, MapPin
+  CircleCheck, Users, Building2, CalendarDays, AlertTriangle
 } from 'lucide-react'
 import { formatDateTime, statusLabel, actionLabel } from '@/lib/utils/format'
 import type { VisitLog, GpsAlert } from '@/lib/supabase/types'
+import type { SharedInspector, SharedLocation } from './AdminShell'
 
-export default function DashboardTab() {
+type Props = {
+  refreshKey: number
+  inspectors: SharedInspector[]
+  locations: SharedLocation[]
+}
+
+export default function DashboardTab({ refreshKey, inspectors, locations }: Props) {
   const supabase = createClient()
   const [logs, setLogs] = useState<VisitLog[]>([])
   const [alerts, setAlerts] = useState<GpsAlert[]>([])
   const [stats, setStats] = useState({ total: 0, inspectors: 0, locations: 0, thisMonth: 0 })
   const [filters, setFilters] = useState({ from: '', to: '', inspector: '', location: '', city: '', action: '' })
-  const [inspectorList, setInspectorList] = useState<{ id: string; full_name: string }[]>([])
-  const [locationList, setLocationList] = useState<{ id: string; name: string; city: string | null }[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => { loadAll() }, [])
+  useEffect(() => { loadAll() }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadAll() {
     setLoading(true)
-    const [{ data: logsData }, { data: insp }, { data: locs }, { data: alertsData }] = await Promise.all([
-      supabase.from('visit_logs').select('*, inspector:profiles(id,full_name), location:locations(id,name,city)')
-        .order('created_at', { ascending: false }).limit(50),
-      supabase.from('profiles').select('id,full_name').eq('role', 'mashgiach'),
-      supabase.from('locations').select('id,name,city').eq('status', 'active'),
-      supabase.from('gps_alerts').select('*, inspector:profiles(id,full_name), location:locations(id,name,city)')
-        .eq('read', false).order('created_at', { ascending: false }).limit(10),
-    ])
-    setLogs((logsData ?? []) as VisitLog[])
-    setAlerts((alertsData ?? []) as GpsAlert[])
-    setInspectorList(insp ?? [])
-    setLocationList(locs ?? [])
-
-    // Stats
     const now = new Date()
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-    const [{ count: total }, { count: thisMonth }, { count: inspCount }, { data: visitedLocs }] = await Promise.all([
+
+    const [
+      { data: logsData },
+      { data: alertsData },
+      { count: total },
+      { count: thisMonth },
+      { count: inspCount },
+    ] = await Promise.all([
+      supabase.from('visit_logs')
+        .select('*, inspector:profiles(id,full_name), location:locations(id,name,city)')
+        .order('created_at', { ascending: false }).limit(50),
+      supabase.from('gps_alerts')
+        .select('*, inspector:profiles(id,full_name), location:locations(id,name,city)')
+        .eq('read', false).order('created_at', { ascending: false }).limit(10),
       supabase.from('visit_logs').select('*', { count: 'exact', head: true }),
       supabase.from('visit_logs').select('*', { count: 'exact', head: true }).gte('created_at', monthStart),
       supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'mashgiach'),
-      supabase.from('visit_logs').select('location_id').not('location_id', 'is', null),
     ])
-    const uniqueLocs = new Set((visitedLocs ?? []).map((v: { location_id: string | null }) => v.location_id)).size
-    setStats({ total: total ?? 0, inspectors: inspCount ?? 0, locations: uniqueLocs, thisMonth: thisMonth ?? 0 })
+
+    setLogs((logsData ?? []) as VisitLog[])
+    setAlerts((alertsData ?? []) as GpsAlert[])
+    const activeLocs = locations.filter(l => l.status === 'active').length
+    setStats({
+      total: total ?? 0,
+      inspectors: inspCount ?? 0,
+      locations: activeLocs,
+      thisMonth: thisMonth ?? 0,
+    })
     setLoading(false)
   }
 
@@ -58,9 +69,8 @@ export default function DashboardTab() {
     return true
   })
 
-  const cities = [...new Set(locationList.map(l => l.city).filter(Boolean))]
+  const cities = [...new Set(locations.map(l => l.city).filter(Boolean))]
 
-  // Summaries
   const byLocation = filtered.filter(l => l.internal_status === 'success').reduce((acc, l) => {
     const key = l.location_id ?? ''
     const loc = l.location as { id: string; name: string; city: string | null } | undefined
@@ -137,10 +147,10 @@ export default function DashboardTab() {
       {/* Stats */}
       <div className="statsGrid">
         {[
-          { icon: CircleCheck, label: 'סה״כ לוגים', value: stats.total },
-          { icon: Users,       label: 'משגיחים פעילים', value: stats.inspectors },
-          { icon: Building2,   label: 'מקומות עם ביקורים', value: stats.locations },
-          { icon: CalendarDays,label: 'חודש נוכחי', value: stats.thisMonth },
+          { icon: CircleCheck,  label: 'סה״כ לוגים',       value: stats.total },
+          { icon: Users,        label: 'משגיחים פעילים',   value: stats.inspectors },
+          { icon: Building2,    label: 'מקומות פעילים',    value: stats.locations },
+          { icon: CalendarDays, label: 'חודש נוכחי',       value: stats.thisMonth },
         ].map(({ icon: Icon, label, value }) => (
           <article key={label} className="statCard">
             <div className="statCard__icon"><Icon size={16} aria-hidden /></div>
@@ -164,13 +174,13 @@ export default function DashboardTab() {
             <label className="field"><span>משגיח</span>
               <select value={filters.inspector} onChange={e => setFilters(f => ({...f, inspector: e.target.value}))}>
                 <option value="">הכל</option>
-                {inspectorList.map(i => <option key={i.id} value={i.id}>{i.full_name}</option>)}
+                {inspectors.map(i => <option key={i.id} value={i.id}>{i.full_name}</option>)}
               </select>
             </label>
             <label className="field"><span>מקום</span>
               <select value={filters.location} onChange={e => setFilters(f => ({...f, location: e.target.value}))}>
                 <option value="">הכל</option>
-                {locationList.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
               </select>
             </label>
             <label className="field"><span>עיר</span>

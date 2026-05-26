@@ -23,16 +23,18 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
   const [editingDefNotes, setEditingDefNotes] = useState<Record<string, string>>({})
   const [savingDefNotes, setSavingDefNotes] = useState<Record<string, boolean>>({})
 
-  useEffect(() => { loadAll() }, [])
+  useEffect(() => { loadAll() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadAll() {
-    const [{ data: v }, { data: d }, { data: c }, { data: ai }, { data: all }] = await Promise.all([
+    const [{ data: fullLoc }, { data: v }, { data: d }, { data: c }, { data: ai }, { data: all }] = await Promise.all([
+      supabase.from('locations').select('*').eq('id', loc.id).single(),
       supabase.from('visit_logs').select('*, inspector:profiles(id,full_name)').eq('location_id', loc.id).order('created_at', { ascending: false }).limit(20),
       supabase.from('deficiency_reports').select('*, inspector:profiles(id,full_name)').eq('location_id', loc.id).order('created_at', { ascending: false }),
       supabase.from('visit_checks').select('*, inspector:profiles(id,full_name)').eq('location_id', loc.id).order('created_at', { ascending: false }).limit(100),
       supabase.from('inspector_locations').select('inspector:profiles(*)').eq('location_id', loc.id),
       supabase.from('profiles').select('*').eq('role', 'mashgiach').order('full_name'),
     ])
+    if (fullLoc) setLocation(fullLoc as Location)
     setVisits((v ?? []) as VisitLog[])
     setDeficiencies((d ?? []) as DeficiencyReport[])
     setChecks((c ?? []) as VisitCheck[])
@@ -131,7 +133,7 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
 
       {/* Contact info */}
       {tab === 'info' && (
-        <form onSubmit={saveInfo} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <form key={location.updated_at ?? 'loading'} onSubmit={saveInfo} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div className="fieldRow">
             <label className="field"><span>איש קשר</span><input name="contact_name" defaultValue={location.contact_name ?? ''} /></label>
             <label className="field"><span>טלפון</span><input name="contact_phone" defaultValue={location.contact_phone ?? ''} /></label>
@@ -146,7 +148,7 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
 
       {/* Kashrus procedure */}
       {tab === 'kashrus' && (
-        <form onSubmit={saveKashrus} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <form key={location.updated_at ?? 'loading'} onSubmit={saveKashrus} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <label className="field">
             <span>נוהל כשרות (טקסט חופשי)</span>
             <textarea name="kashrus_procedure" rows={10} defaultValue={location.kashrus_procedure ?? ''} />

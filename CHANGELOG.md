@@ -101,6 +101,63 @@ These items could not be completed automatically and require a real browser sess
 
 ---
 
+## [Perf Patch]: 2026-05-26: Admin tab remounting, shared data, query batching, DB indexes
+
+### Perf Patch summary
+
+6 optimizations implemented. 1 DB migration (9 indexes). Build: clean. TypeScript: clean. Em dash audit: clean.
+
+**Root cause of 2-3 second delays confirmed:** NOT DB query speed (data volumes tiny). Root causes were architectural: tab components remounting on every tab switch, InspectorsTab calling a slow API route with cold-start risk on every mount, DashboardTab running 8 queries in two sequential batches.
+
+#### Fix 1: Lazy tab mounting (eliminates remount on tab switch)
+**Files:** `components/admin/AdminShell.tsx`
+
+Tabs now mount only on first visit (`mountedTabs.has(id)`) and are then hidden with `display: none` instead of unmounting. Each tab no longer re-fetches its data on every tab switch.
+
+#### Fix 2: Hoist shared lookup data to AdminShell (shared session cache)
+**Files:** `components/admin/AdminShell.tsx`
+
+`profiles`, `locations`, `inspector_locations`, and `/api/admin/users` are now fetched once in `loadShared()` at the AdminShell level and passed as props. Four exported types: `SharedInspector`, `SharedLocation`, `SharedIL` (used by child tabs). `loadShared()` runs in parallel with auth check on mount and re-runs on every refresh button press.
+
+#### Fix 3: Remove per-tab inspector/location/email fetches
+**Files:** `components/admin/InspectorsTab.tsx`, `components/admin/ReportsTab.tsx`, `components/admin/DeficienciesTab.tsx`, `components/admin/AbsencesTab.tsx`
+
+Each tab previously fetched inspectors, locations, and email map independently on mount. These are now replaced with props from AdminShell. Each tab's `loadAll()` now fetches only its own data (1 query each instead of 3-4).
+
+#### Fix 4: Dashboard single-batch query (was 2 sequential batches)
+**Files:** `components/admin/DashboardTab.tsx`
+
+Dashboard was running 8 queries in two sequential `Promise.all` batches. Now runs all 5 relevant queries in one `Promise.all`. Removed unbounded `visit_logs.select('location_id')` query; active location count now derived from the `locations` prop (no round-trip). Label updated from "מקומות עם ביקורים" to "מקומות פעילים".
+
+#### Fix 5: Narrow heavy selects
+**Files:** `components/admin/LocationsTab.tsx`, `app/inspector/page.tsx`
+
+`LocationsTab` list query narrowed from `select('*')` to specific columns (id, name, city, address, qr_code, lat, lng, status). Edit opens a separate full-record fetch (`select('*')` for the single record). Inspector home location join narrowed from `location:locations(*)` to `location:locations(id,name,city,address,status)`.
+
+`LocationDetailModal` fetches the full location record in its own `loadAll()` call and uses `key={location.updated_at ?? 'loading'}` on contact/kashrus forms to force re-initialization of `defaultValue` inputs when async data arrives.
+
+#### Fix 6: DB indexes (9 new B-tree indexes)
+**Migration:** `perf_indexes` applied to project `avgzxdfweopkmdldkivc`
+
+```sql
+idx_visit_logs_created_at        ON visit_logs (created_at DESC)
+idx_visit_logs_location_id       ON visit_logs (location_id)
+idx_visit_logs_inspector_id      ON visit_logs (inspector_id)
+idx_deficiency_reports_created_at ON deficiency_reports (created_at DESC)
+idx_deficiency_reports_location_id ON deficiency_reports (location_id)
+idx_gps_alerts_read              ON gps_alerts (read)
+idx_visit_checks_visit_log_id    ON visit_checks (visit_log_id)
+idx_visit_checks_location_id     ON visit_checks (location_id)
+idx_profiles_role                ON profiles (role)
+```
+
+All `CREATE INDEX IF NOT EXISTS` - safe DDL, no table lock, no data risk.
+
+#### Not implemented (security tradeoff)
+`getUser()` on the inspector home is NOT replaced with `getSession()`. `getUser()` makes a network round-trip but verifies the JWT server-side. `getSession()` reads only from the cookie (unverified at client level). Keeping the secure pattern.
+
+---
+
 ## [Phase 3]: 2026-05-25: Inspector profile, admin email, replacement inspector, check-in badge, scrollbar fix
 
 ### Phase 3 summary

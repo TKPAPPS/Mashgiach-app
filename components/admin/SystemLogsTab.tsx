@@ -12,13 +12,15 @@ function thirtyDaysAgo() {
 
 const DEFAULT_FROM = thirtyDaysAgo()
 
-export default function SystemLogsTab() {
+type Props = { refreshKey: number }
+
+export default function SystemLogsTab({ refreshKey }: Props) {
   const supabase = createClient()
   const [logs, setLogs] = useState<VisitLog[]>([])
   const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState({ from: DEFAULT_FROM, to: '', action: '', search: '' })
 
-  useEffect(() => { loadLogs(DEFAULT_FROM) }, [])
+  useEffect(() => { loadLogs(filters.from) }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadLogs(fromDate = filters.from) {
     setLoading(true)
