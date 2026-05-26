@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
-  CircleCheck, Users, Building2, CalendarDays, AlertTriangle
+  CircleCheck, Users, CalendarDays, AlertTriangle
 } from 'lucide-react'
 import { formatDateTime, statusLabel, actionLabel } from '@/lib/utils/format'
 import type { VisitLog, GpsAlert } from '@/lib/supabase/types'
@@ -18,7 +18,7 @@ export default function DashboardTab({ refreshKey, inspectors, locations }: Prop
   const supabase = useMemo(() => createClient(), [])
   const [logs, setLogs] = useState<VisitLog[]>([])
   const [alerts, setAlerts] = useState<GpsAlert[]>([])
-  const [stats, setStats] = useState({ total: 0, inspectors: 0, locations: 0, thisMonth: 0 })
+  const [stats, setStats] = useState({ total: 0, inspectors: 0, thisMonth: 0 })
   const [filters, setFilters] = useState({ from: '', to: '', inspector: '', location: '', city: '', action: '' })
   const [loading, setLoading] = useState(true)
 
@@ -53,11 +53,9 @@ export default function DashboardTab({ refreshKey, inspectors, locations }: Prop
 
     setLogs((logsData ?? []) as VisitLog[])
     setAlerts((alertsData ?? []) as GpsAlert[])
-    const activeLocs = locations.filter(l => l.status === 'active').length
     setStats({
       total: total ?? 0,
       inspectors: inspCount ?? 0,
-      locations: activeLocs,
       thisMonth: thisMonth ?? 0,
     })
     setLoading(false)
@@ -153,7 +151,6 @@ export default function DashboardTab({ refreshKey, inspectors, locations }: Prop
         {[
           { icon: CircleCheck,  label: 'סה״כ לוגים',       value: stats.total },
           { icon: Users,        label: 'משגיחים פעילים',   value: stats.inspectors },
-          { icon: Building2,    label: 'מקומות פעילים',    value: stats.locations },
           { icon: CalendarDays, label: 'חודש נוכחי',       value: stats.thisMonth },
         ].map(({ icon: Icon, label, value }) => (
           <article key={label} className="statCard">
