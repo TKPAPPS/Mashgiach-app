@@ -33,7 +33,7 @@ export default function InspectorHome() {
     const [{ data: prof }, { data: il }, { data: recentVisits }] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', user.id).single(),
       supabase.from('inspector_locations').select('location_id, location:locations(id,name,city,address,status)').eq('inspector_id', user.id),
-      supabase.from('visit_logs').select('*').eq('inspector_id', user.id).order('created_at', { ascending: false }).limit(50),
+      supabase.from('visit_logs').select('id,action_type,location_id,created_at').eq('inspector_id', user.id).order('created_at', { ascending: false }).limit(50),
     ])
 
     setProfile(prof as Profile)
@@ -53,26 +53,16 @@ export default function InspectorHome() {
     router.push('/login')
   }
 
-  if (loading) {
-    return (
-      <div className="app" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100svh' }}>
-        <span className="spinner" style={{ width: 32, height: 32 }} />
-      </div>
-    )
-  }
-
   return (
     <div className="app" style={{ maxWidth: 480, margin: '0 auto' }}>
       <header className="appHeader">
         <div className="appHeader__brand">
           <Image src="/logo.png" alt="The Kosher Place" width={100} height={56} priority className="appHeader__logo" />
         </div>
-        {profile && (
-          <div className="appHeader__user">
-            <strong>{profile.full_name}</strong>
-            <span>משגיח</span>
-          </div>
-        )}
+        <div className="appHeader__user" style={{ visibility: profile ? 'visible' : 'hidden' }}>
+          <strong>{profile?.full_name ?? ''}</strong>
+          <span>משגיח</span>
+        </div>
         <div className="appHeader__actions">
           <button className="button button--icon button--ghost" onClick={logout}
             style={{ color: '#fff', border: 'none', opacity: .85 }} title="יציאה">
@@ -85,7 +75,9 @@ export default function InspectorHome() {
         {activeTab === 'home' && (
           <>
             <div style={{ fontWeight: 700, fontSize: '1.05rem', marginBottom: 4 }}>המקומות שלי</div>
-            {locations.length === 0
+            {loading
+              ? <div className="emptyState"><span className="spinner" /></div>
+              : locations.length === 0
               ? <div className="emptyState">לא שויכת למקומות עדיין.</div>
               : locations.map(loc => {
                 const isInside = loc.lastVisit?.action_type === 'entry'
