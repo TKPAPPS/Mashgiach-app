@@ -25,10 +25,11 @@ export async function POST(req: NextRequest) {
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
   if (profile?.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { email, password, full_name, start_date, vacation_days_remaining } = await req.json()
+  const { email, password, full_name, role, start_date, vacation_days_remaining } = await req.json()
   if (!email || !password || !full_name) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
+  const targetRole: 'mashgiach' | 'admin' = role === 'admin' ? 'admin' : 'mashgiach'
 
   const service = createServiceClient()
 
@@ -49,7 +50,7 @@ export async function POST(req: NextRequest) {
   const { error: profileError } = await service.from('profiles').upsert({
     id: authData.user.id,
     full_name,
-    role: 'mashgiach',
+    role: targetRole,
     start_date: start_date || null,
     vacation_days_remaining: vacation_days_remaining ?? 0,
   }, { onConflict: 'id' })

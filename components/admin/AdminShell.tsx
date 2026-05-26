@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import {
   RefreshCw, LogOut,
   CalendarDays, MapPin, Users, FileText,
-  AlertTriangle, CheckSquare, ScrollText
+  AlertTriangle, CheckSquare, ScrollText, ShieldCheck
 } from 'lucide-react'
 import Image from 'next/image'
 import type { Profile } from '@/lib/supabase/types'
@@ -18,12 +18,13 @@ import DeficienciesTab from './DeficienciesTab'
 import ChecklistAdmin  from './ChecklistAdmin'
 import AbsencesTab     from './AbsencesTab'
 import SystemLogsTab   from './SystemLogsTab'
+import AdminsTab       from './AdminsTab'
 
 export type SharedInspector = { id: string; full_name: string }
 export type SharedLocation   = { id: string; name: string; city: string | null; status: string }
 export type SharedIL         = { inspector_id: string; location_id: string }
 
-type Tab = 'dashboard' | 'locations' | 'inspectors' | 'reports' | 'deficiencies' | 'checklist' | 'absences' | 'logs'
+type Tab = 'dashboard' | 'locations' | 'inspectors' | 'reports' | 'deficiencies' | 'checklist' | 'absences' | 'logs' | 'admins'
 
 const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
   { id: 'dashboard',    label: 'דשבורד',        Icon: CalendarDays },
@@ -34,6 +35,7 @@ const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
   { id: 'absences',     label: 'היעדרויות',      Icon: CalendarDays },
   { id: 'checklist',    label: 'רשימת בדיקות',   Icon: CheckSquare },
   { id: 'logs',         label: 'לוגים',          Icon: ScrollText },
+  { id: 'admins',       label: 'מנהלים',         Icon: ShieldCheck },
 ]
 
 export default function AdminShell() {
@@ -185,6 +187,11 @@ export default function AdminShell() {
         {mountedTabs.has('logs') && (
           <div style={{ display: tab === 'logs' ? undefined : 'none' }}>
             <SystemLogsTab refreshKey={refreshKey} />
+          </div>
+        )}
+        {mountedTabs.has('admins') && (
+          <div style={{ display: tab === 'admins' ? undefined : 'none' }}>
+            <AdminsTab refreshKey={refreshKey} emailMap={emailMap} currentUserId={profile?.id ?? null} />
           </div>
         )}
       </main>

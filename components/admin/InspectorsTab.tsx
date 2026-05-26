@@ -259,6 +259,30 @@ export default function InspectorsTab({ refreshKey, locations, emailMap }: Props
               <label className="field"><span>תאריך התחלה</span><input name="start_date" type="date" defaultValue={editInsp.start_date ?? ''} /></label>
               <label className="field"><span>ימי חופש</span><input name="vacation_days" type="number" min={0} defaultValue={editInsp.vacation_days_remaining} /></label>
             </div>
+            <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '2px 0' }} />
+            <div>
+              <p style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>שיוך מקומות</p>
+              {locations.length === 0
+                ? <p style={{ fontSize: '.82rem', color: 'var(--muted)' }}>אין מקומות מוגדרים.</p>
+                : <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 180, overflowY: 'auto' }}>
+                    {locations.map(loc => {
+                      const assigned = (assignedLocs[editInsp.id] ?? []).includes(loc.id)
+                      return (
+                        <div key={loc.id}
+                          className={`checklistAdminItem${assigned ? '' : ' checklistAdminItem--inactive'}`}
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => toggleLocAssign(editInsp.id, loc.id)}>
+                          <input type="checkbox" checked={assigned} readOnly
+                            style={{ accentColor: 'var(--primary)', cursor: 'pointer' }} />
+                          <span className="checklistAdminItem__name">{loc.name}</span>
+                          {loc.city && <span style={{ fontSize: '.75rem', color: 'var(--muted)' }}>{loc.city}</span>}
+                          {loc.status !== 'active' && <span className="badge badge--muted" style={{ fontSize: '.7rem' }}>לא פעיל</span>}
+                        </div>
+                      )
+                    })}
+                  </div>
+              }
+            </div>
           </form>
         )}
       </Modal>
