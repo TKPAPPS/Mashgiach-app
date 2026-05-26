@@ -7,6 +7,28 @@ import { exportToExcel } from '@/lib/utils/excel'
 import type { VisitLog } from '@/lib/supabase/types'
 import type { SharedInspector, SharedLocation } from './AdminShell'
 
+function computeTimeSpent(logs: VisitLog[]): Record<string, string> {
+  const sorted = [...logs].sort((a, b) => a.created_at.localeCompare(b.created_at))
+  const lastEntry: Record<string, VisitLog> = {}
+  const result: Record<string, string> = {}
+  for (const log of sorted) {
+    const key = `${log.inspector_id}|${log.location_id ?? ''}`
+    if (log.action_type === 'entry') {
+      lastEntry[key] = log
+    } else if (log.action_type === 'exit' && lastEntry[key]) {
+      const ms = new Date(log.created_at).getTime() - new Date(lastEntry[key].created_at).getTime()
+      const mins = Math.round(ms / 60000)
+      if (mins >= 0 && mins < 1440) {
+        const h = Math.floor(mins / 60)
+        const m = mins % 60
+        result[log.id] = h > 0 ? `${h}ש׳ ${m}ד׳` : `${m}ד׳`
+      }
+      delete lastEntry[key]
+    }
+  }
+  return result
+}
+
 function thirtyDaysAgo() {
   const d = new Date()
   d.setDate(d.getDate() - 30)
@@ -90,6 +112,7 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
   const [filters, setFilters] = useState({ from: DEFAULT_FROM, to: '', inspector: '', location: '', action: '' })
   const [photoCounts, setPhotoCounts] = useState<Record<string, number>>({})
   const [photoModalId, setPhotoModalId] = useState<string | null>(null)
+  const [timeSpent, setTimeSpent] = useState<Record<string, string>>({})
 
   useEffect(() => { loadAll(filters.from) }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -103,6 +126,7 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
     const { data: logsData } = await q
     const list = (logsData ?? []) as VisitLog[]
     setLogs(list)
+    setTimeSpent(computeTimeSpent(list))
     setLoading(false)
 
     // Batch-fetch photo counts (single query)
@@ -133,6 +157,7 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
       'מקום': (l.location as { name: string } | undefined)?.name ?? '-',
       'עיר': (l.location as { city: string | null } | undefined)?.city ?? '-',
       'סטטוס': statusLabel(l.internal_status).label,
+      'זמן שהייה': timeSpent[l.id] ?? '',
       'קו רוחב': l.device_lat ?? '',
       'קו אורך': l.device_lng ?? '',
       'מרחק (מ׳)': l.distance_meters ?? '',
@@ -202,7 +227,7 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
               <thead>
                 <tr>
                   <th>תאריך ושעה</th><th>פעולה</th><th>משגיח</th><th>מקום</th>
-                  <th>עיר</th><th>סטטוס</th><th>מרחק</th><th>GPS</th><th>תמונות</th>
+                  <th>עיר</th><th>סטטוס</th><th>זמן שהייה</th><th>מרחק</th><th>GPS</th><th>תמונות</th>
                 </tr>
               </thead>
               <tbody>
@@ -219,6 +244,7 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
                       <td>{loc?.name ?? <span className="mutedCell">-</span>}</td>
                       <td>{loc?.city ?? <span className="mutedCell">-</span>}</td>
                       <td><span className={`badge ${cls}`}>{label}</span></td>
+                      <td>{timeSpent[log.id] ? <span style={{ fontSize: '.85rem', color: 'var(--primary)', fontWeight: 500 }}>{timeSpent[log.id]}</span> : <span className="mutedCell">-</span>}</td>
                       <td>{log.distance_meters != null ? `${log.distance_meters} מ׳` : <span className="mutedCell">-</span>}</td>
                       <td>
                         {log.device_lat && log.device_lng

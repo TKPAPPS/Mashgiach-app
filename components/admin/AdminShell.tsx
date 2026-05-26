@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import {
   RefreshCw, LogOut,
   CalendarDays, MapPin, Users, FileText,
-  AlertTriangle, CheckSquare, ScrollText, ShieldCheck
+  AlertTriangle, CheckSquare, ScrollText, ShieldCheck, ClipboardList
 } from 'lucide-react'
 import Image from 'next/image'
 import type { Profile } from '@/lib/supabase/types'
@@ -19,12 +19,13 @@ import ChecklistAdmin  from './ChecklistAdmin'
 import AbsencesTab     from './AbsencesTab'
 import SystemLogsTab   from './SystemLogsTab'
 import AdminsTab       from './AdminsTab'
+import AdminReportTab  from './AdminReportTab'
 
 export type SharedInspector = { id: string; full_name: string }
 export type SharedLocation   = { id: string; name: string; city: string | null; status: string }
 export type SharedIL         = { inspector_id: string; location_id: string }
 
-type Tab = 'dashboard' | 'locations' | 'inspectors' | 'reports' | 'deficiencies' | 'checklist' | 'absences' | 'logs' | 'admins'
+type Tab = 'dashboard' | 'locations' | 'inspectors' | 'reports' | 'deficiencies' | 'checklist' | 'absences' | 'logs' | 'admins' | 'adminreports'
 
 const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
   { id: 'dashboard',    label: 'דשבורד',        Icon: CalendarDays },
@@ -36,6 +37,7 @@ const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
   { id: 'checklist',    label: 'רשימת בדיקות',   Icon: CheckSquare },
   { id: 'logs',         label: 'לוגים',          Icon: ScrollText },
   { id: 'admins',       label: 'מנהלים',         Icon: ShieldCheck },
+  { id: 'adminreports', label: 'דוח מנהל',       Icon: ClipboardList },
 ]
 
 export default function AdminShell() {
@@ -201,6 +203,11 @@ export default function AdminShell() {
         {mountedTabs.has('admins') && (
           <div style={{ display: tab === 'admins' ? undefined : 'none' }}>
             <AdminsTab refreshKey={refreshKey} emailMap={emailMap} currentUserId={profile?.id ?? null} />
+          </div>
+        )}
+        {mountedTabs.has('adminreports') && (
+          <div style={{ display: tab === 'adminreports' ? undefined : 'none' }}>
+            <AdminReportTab refreshKey={refreshKey} locations={sharedLocations} />
           </div>
         )}
       </main>

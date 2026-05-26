@@ -143,6 +143,40 @@ export type VisitPhoto = {
   created_at: string
 }
 
+export type AdminLocationReport = {
+  id: string
+  location_id: string
+  admin_id: string
+  title: string
+  body: string | null
+  visit_date: string
+  created_at: string
+  updated_at: string
+  location?: Pick<Location, 'id' | 'name' | 'city' | 'address'>
+  admin?: Pick<Profile, 'id' | 'full_name'>
+}
+
+export type AdminReportAttachment = {
+  id: string
+  report_id: string
+  admin_id: string
+  file_path: string
+  file_name: string
+  file_type: 'image' | 'document'
+  created_at: string
+}
+
+export type AdminReportFollowup = {
+  id: string
+  report_id: string
+  admin_id: string
+  text: string
+  is_done: boolean
+  created_at: string
+  updated_at: string
+  admin?: Pick<Profile, 'id' | 'full_name'>
+}
+
 export type GpsAlert = {
   id: string
   visit_log_id: string | null
@@ -176,9 +210,12 @@ export type Database = {
       absence_requests:    TableDef<AbsenceRequest, Omit<AbsenceRequest,'id'|'created_at'|'admin_status'|'admin_notes'|'inspector'|'location'|'replacement_inspector'> & { admin_status?: AbsenceAdminStatus; admin_notes?: string | null }, Partial<Omit<AbsenceRequest,'inspector'|'location'|'replacement_inspector'>>>
       system_logs:         TableDef<SystemLog, Omit<SystemLog,'id'|'created_at'|'performer'|'location'>, Partial<Omit<SystemLog,'performer'|'location'>>>
       gps_alerts:          TableDef<GpsAlert, Omit<GpsAlert,'id'|'created_at'|'inspector'|'location'>, Partial<Omit<GpsAlert,'inspector'|'location'>>>
-      visit_photos:        TableDef<VisitPhoto, Omit<VisitPhoto,'id'|'created_at'>, Partial<VisitPhoto>>
-      report_photos:       TableDef<ReportPhoto, Omit<ReportPhoto,'id'|'created_at'>, Partial<ReportPhoto>>
-      push_subscriptions:  TableDef<{ id: string; user_id: string; endpoint: string; p256dh: string; auth: string; created_at: string }, { user_id: string; endpoint: string; p256dh: string; auth: string }, { user_id?: string; endpoint?: string; p256dh?: string; auth?: string }>
+      visit_photos:              TableDef<VisitPhoto, Omit<VisitPhoto,'id'|'created_at'>, Partial<VisitPhoto>>
+      report_photos:             TableDef<ReportPhoto, Omit<ReportPhoto,'id'|'created_at'>, Partial<ReportPhoto>>
+      admin_location_reports:    TableDef<AdminLocationReport, Omit<AdminLocationReport,'id'|'created_at'|'updated_at'|'location'|'admin'>, Partial<Omit<AdminLocationReport,'location'|'admin'>>>
+      admin_report_attachments:  TableDef<AdminReportAttachment, Omit<AdminReportAttachment,'id'|'created_at'>, Partial<AdminReportAttachment>>
+      admin_report_followups:    TableDef<AdminReportFollowup, Omit<AdminReportFollowup,'id'|'created_at'|'updated_at'|'admin'>, Partial<Omit<AdminReportFollowup,'admin'>>>
+      push_subscriptions:        TableDef<{ id: string; user_id: string; endpoint: string; p256dh: string; auth: string; created_at: string }, { user_id: string; endpoint: string; p256dh: string; auth: string }, { user_id?: string; endpoint?: string; p256dh?: string; auth?: string }>
     }
     Views: Record<string, never>
     Functions: Record<string, never>
