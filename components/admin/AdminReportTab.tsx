@@ -1,8 +1,8 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import {
-  Plus, X, Pencil, Trash2, Check, Paperclip, Camera,
-  ChevronDown, ChevronUp, FileText, Image as ImageIcon, Download,
+  Plus, X, Pencil, Trash2, Check, Paperclip,
+  FileText, Image as ImageIcon, Download,
 } from 'lucide-react'
 import type { SharedLocation } from './AdminShell'
 
@@ -444,7 +444,6 @@ export default function AdminReportTab({ refreshKey, locations }: Props) {
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<LocationReport | null>(null)
   const [selected, setSelected] = useState<LocationReport | null>(null)
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
 
   useEffect(() => { loadReports() }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -474,14 +473,6 @@ export default function AdminReportTab({ refreshKey, locations }: Props) {
     await fetch(`/api/admin/location-reports?id=${id}`, { method: 'DELETE' })
     setReports(prev => prev.filter(r => r.id !== id))
     if (selected?.id === id) setSelected(null)
-  }
-
-  function toggleExpand(id: string) {
-    setExpandedIds(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id); else next.add(id)
-      return next
-    })
   }
 
   return (
@@ -533,50 +524,34 @@ export default function AdminReportTab({ refreshKey, locations }: Props) {
           <div className="emptyState">אין דוחות. לחץ על "דוח חדש" כדי להוסיף.</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-            {filtered.map(r => {
-              const expanded = expandedIds.has(r.id)
-              return (
-                <div key={r.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                  <div style={{
-                    display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px',
-                    cursor: 'pointer',
-                  }} onClick={() => toggleExpand(r.id)}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        <strong style={{ fontSize: '.9rem' }}>{r.title}</strong>
-                        <span style={{ fontSize: '.75rem', background: '#f0f0f0', borderRadius: 4, padding: '1px 6px', color: 'var(--muted)' }}>{formatDate(r.visit_date)}</span>
-                      </div>
-                      <p style={{ margin: '2px 0 0', fontSize: '.8rem', color: 'var(--muted)' }}>
-                        {r.location?.name ?? '-'}{r.location?.city ? ` | ${r.location.city}` : ''} &middot; {r.admin?.full_name ?? '-'}
-                      </p>
-                    </div>
-                    <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
-                      <button className="button button--icon button--ghost" style={{ padding: '4px' }}
-                        onClick={e => { e.stopPropagation(); setEditing(r) }} title="ערוך">
-                        <Pencil size={14} />
-                      </button>
-                      <button className="button button--icon button--ghost" style={{ padding: '4px' }}
-                        onClick={e => { e.stopPropagation(); setSelected(r) }} title="קבצים ומעקב">
-                        <Camera size={14} />
-                      </button>
-                      <button className="button button--icon button--ghost" style={{ padding: '4px', color: 'var(--danger)' }}
-                        onClick={e => { e.stopPropagation(); handleDelete(r.id) }} title="מחק">
-                        <Trash2 size={14} />
-                      </button>
-                      {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                    </div>
+            {filtered.map(r => (
+              <div key={r.id} style={{ borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px' }}>
+                <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => setSelected(r)}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <strong style={{ fontSize: '.9rem' }}>{r.title}</strong>
+                    <span style={{ fontSize: '.75rem', background: '#f0f0f0', borderRadius: 4, padding: '1px 6px', color: 'var(--muted)' }}>{formatDate(r.visit_date)}</span>
+                    {r.body && <span style={{ fontSize: '.78rem', color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}>{r.body.slice(0, 60)}{r.body.length > 60 ? '...' : ''}</span>}
                   </div>
-
-                  {expanded && r.body && (
-                    <div style={{ padding: '0 16px 14px' }}>
-                      <p style={{ margin: 0, fontSize: '.875rem', whiteSpace: 'pre-wrap', lineHeight: 1.6, color: 'var(--text)', background: '#fafafa', borderRadius: 8, padding: '10px 14px', border: '1px solid var(--border)' }}>
-                        {r.body}
-                      </p>
-                    </div>
-                  )}
+                  <p style={{ margin: '2px 0 0', fontSize: '.8rem', color: 'var(--muted)' }}>
+                    {r.location?.name ?? '-'}{r.location?.city ? ` | ${r.location.city}` : ''} &middot; {r.admin?.full_name ?? '-'}
+                  </p>
                 </div>
-              )
-            })}
+                <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
+                  <button className="button button--ghost button--sm" style={{ fontSize: '.78rem' }}
+                    onClick={() => setSelected(r)}>
+                    <Paperclip size={13} /> קבצים ומעקב
+                  </button>
+                  <button className="button button--icon button--ghost" style={{ padding: '4px' }}
+                    onClick={e => { e.stopPropagation(); setEditing(r) }} title="ערוך">
+                    <Pencil size={14} />
+                  </button>
+                  <button className="button button--icon button--ghost" style={{ padding: '4px', color: 'var(--danger)' }}
+                    onClick={e => { e.stopPropagation(); handleDelete(r.id) }} title="מחק">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>

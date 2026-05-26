@@ -77,21 +77,24 @@ export default function AdminShell() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadShared() {
-    const [{ data: insp }, { data: locs }, { data: il }, emailsRes] = await Promise.all([
+    // Fast path: core lookup data (no auth API call)
+    const [{ data: insp }, { data: locs }, { data: il }] = await Promise.all([
       supabase.from('profiles').select('id,full_name').eq('role', 'mashgiach').order('full_name'),
       supabase.from('locations').select('id,name,city,status').order('name'),
       supabase.from('inspector_locations').select('inspector_id,location_id'),
-      fetch('/api/admin/users'),
     ])
     setSharedInspectors((insp ?? []) as SharedInspector[])
     setSharedLocations((locs ?? []) as SharedLocation[])
     setSharedIL((il ?? []) as SharedIL[])
-    if (emailsRes.ok) {
+
+    // Slow path: auth email list (non-blocking, updates emailMap when ready)
+    fetch('/api/admin/users').then(async emailsRes => {
+      if (!emailsRes.ok) return
       const emailList: { id: string; email: string | null }[] = await emailsRes.json()
       const em: Record<string, string | null> = {}
       for (const e of emailList) em[e.id] = e.email
       setEmailMap(em)
-    }
+    }).catch(() => {/* non-critical */})
   }
 
   function handleTabChange(newTab: Tab) {

@@ -42,9 +42,9 @@ export default function DashboardTab({ refreshKey, inspectors, locations }: Prop
       supabase.from('gps_alerts')
         .select('*, inspector:profiles(id,full_name), location:locations(id,name,city)')
         .eq('read', false).order('created_at', { ascending: false }).limit(10),
-      supabase.from('visit_logs').select('*', { count: 'exact', head: true }),
-      supabase.from('visit_logs').select('*', { count: 'exact', head: true }).gte('created_at', monthStart),
-      supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'mashgiach'),
+      supabase.from('visit_logs').select('id', { count: 'estimated', head: true }),
+      supabase.from('visit_logs').select('id', { count: 'estimated', head: true }).gte('created_at', monthStart),
+      supabase.from('profiles').select('id', { count: 'estimated', head: true }).eq('role', 'mashgiach'),
     ])
 
     setLogs((logsData ?? []) as VisitLog[])
