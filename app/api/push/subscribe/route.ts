@@ -7,9 +7,8 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const subscription = await req.json()
-  const service = await createServiceClient()
+  const service = createServiceClient()
 
-  // Upsert by endpoint
   await service.from('push_subscriptions').upsert({
     user_id: user.id,
     endpoint: subscription.endpoint,
@@ -26,7 +25,7 @@ export async function DELETE(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { endpoint } = await req.json()
-  const service = await createServiceClient()
+  const service = createServiceClient()
   await service.from('push_subscriptions').delete().eq('endpoint', endpoint)
 
   return NextResponse.json({ success: true })
