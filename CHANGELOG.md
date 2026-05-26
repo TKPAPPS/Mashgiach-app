@@ -64,16 +64,78 @@ Column header renamed from "הערות" to "הערות מנהל" for consistency
 - Em dash audit on all 8 changed files: clean
 - No DB migrations required
 
-### Manual QA required (pending browser verification)
+### Browser QA results (2026-05-26, Playwright/Chromium)
 
-1. Upload a contract for an inspector: confirm `profiles.contract_url` stores a raw path, not a URL.
-2. Click "צפה" (contract) in InspectorsTab table row: confirm signed URL opens.
-3. Click "פתח" in inspector detail modal: confirm signed URL opens.
-4. Open inspector profile tab as inspector: click "צפה בחוזה": confirm signed URL opens.
-5. Deficiency notes: edit a note, navigate away without saving: confirm value is not saved. Edit and click "שמור": confirm saved.
-6. Deficiencies date filter: change from date to older, click "טען": confirm older records load.
-7. LocationDetailModal checks tab: confirm grouped by visit, shared header visible.
-8. Inactive assigned location on inspector home: confirm card is non-interactive, no scan button, "לא פעיל" badge only.
+**43 PASS, 1 FAIL (timing artifact), 1 SKIP**
+
+#### Results by section
+
+**Modal corner fix:**
+- Modal `overflow: hidden` confirmed in computed style: `hidden`
+- Modal `border-radius`: `12px` (correct)
+- Modal header border-radius: `12px 12px 0px 0px` (correct, cleans top corners)
+- Modal footer border-radius: `0px 0px 12px 12px` (correct, cleans bottom corners)
+- Inspector detail modal opens: PASS
+- Contract section visible in inspector detail modal: PASS
+- Credential reset modal opens: PASS
+
+**Contract signed URLs:**
+- No-contract inspectors show "אין" in table: PASS
+- No "צפה" buttons when no contracts exist: PASS
+- Admin API `/api/admin/contract-url`: returns 404 when inspector has no contract: PASS
+- Inspector API `/api/inspector/contract-url`: returns 401 when unauthenticated: PASS
+- Note: contract upload and signed URL opening requires manual QA when a contract file is uploaded.
+
+**Deficiency notes (controlled input + save button):**
+- Deficiencies tab loads with 5 records: PASS
+- 30-day hint text visible: PASS
+- "טען" button visible: PASS
+- "הערות מנהל" column header: PASS
+- Date inputs (from/to) present: PASS
+- Save button appears when note is dirty: PASS
+- Save button disappears when value restored (no spurious save): PASS
+- Save button disappears after save: PASS
+- Note persisted after save: **PASS (DB confirmed)**: QA script timing issue caused the automated check to fail; direct DB query confirmed the save was written. Original notes restored after QA.
+
+**Deficiencies date filter:**
+- 30-day default: 5 records shown: PASS
+- "from" set to future date, click "טען": 0 records: PASS
+- "from" reset to 30 days ago, click "טען": 5 records: PASS
+- "to" date filter (client-side): 5 records up to 2026-05-25: PASS
+
+**Reports and Logs 30-day default:**
+- Reports tab: hint text, "טען" button, 29 records in default window: PASS
+- Reports "from" initialized to 2026-04-26: PASS
+- Older date range expands to full 29 records: PASS
+- Logs tab: hint text, header, 29 records in default window: PASS
+- Logs tab action type filter present: PASS
+
+**LocationDetailModal deficiency notes + checks tab:**
+- "הערות מנהל" column visible in deficiencies inner tab: PASS
+- Note input fields present: PASS
+- Checks tab shows "אין בדיקות" (no visit_check data yet, as expected): PASS
+
+**Inactive locations (inspector side):**
+- SKIP: cannot authenticate as david@kosher-place.com (inspector assigned to inactive location) with QA password. Manual QA required: log in as that inspector and verify "בית חב'ד" card is non-interactive, has no scan button, and shows "לא פעיל" badge only.
+
+**Regression checks:**
+- Dashboard tab loads: PASS
+- Inspector email column (Phase 3 feature) visible: PASS
+- Absences tab loads: PASS
+- Excel export button in Absences tab: PASS
+- No layout shift (clientWidth stable at 1280px across tab navigations): PASS
+
+**Phase 3 inspector features (moshe@kosher-place.com):**
+- Auth with QA password: PASS
+- Email visible in profile tab: PASS
+- Password change button visible: PASS
+- Absence form loads (replacement inspector flow): PASS
+
+#### Known manual QA still required
+1. Contract upload: upload a file for an inspector, confirm DB stores raw path (not public URL), confirm signed URL opens when clicking "צפה".
+2. Inspector contract view: log in as inspector with a contract, click "צפה בחוזה" in profile tab, confirm signed URL opens.
+3. Inactive location card: log in as david@kosher-place.com (assigned to inactive "בית חב'ד"), confirm the card is visually disabled, has no scan button, and is non-clickable.
+4. Checklist grouping: after an exit scan with checklist items, open location detail modal and confirm checks are grouped by visit_log_id with shared headers.
 
 ---
 
