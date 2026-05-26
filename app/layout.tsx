@@ -1,11 +1,21 @@
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
+const baseUrl = process.env.NEXT_PUBLIC_BASE_URL
+  ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+
 export const metadata: Metadata = {
+  metadataBase: new URL(baseUrl),
   title: 'The Kosher Place: Mashgiach',
   description: 'מערכת מעקב ובקרה לביקורי משגיחים',
   manifest: '/manifest.json',
   appleWebApp: { capable: true, title: 'Mashgiach', statusBarStyle: 'default' },
+  openGraph: {
+    title: 'The Kosher Place: Mashgiach',
+    description: 'מערכת מעקב ובקרה לביקורי משגיחים',
+    images: [{ url: '/logo.png', width: 1000, height: 1000, alt: 'The Kosher Place' }],
+    type: 'website',
+  },
 }
 
 export const viewport: Viewport = {
