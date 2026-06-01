@@ -186,6 +186,7 @@ export type GpsAlert = {
   created_at: string
   inspector?: Pick<Profile, 'id' | 'full_name'>
   location?: Pick<Location, 'id' | 'name' | 'city'>
+  visit_log?: Pick<VisitLog, 'device_lat' | 'device_lng'> | null
 }
 
 type TableDef<Row, Insert, Update> = {

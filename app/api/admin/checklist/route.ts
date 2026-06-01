@@ -35,7 +35,7 @@ export async function PATCH(req: NextRequest) {
   if (!await requireAdmin()) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const { id, name, sort_order, active } = await req.json()
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
-  const updates: Record<string, unknown> = {}
+  const updates: Partial<{ name: string; sort_order: number; active: boolean }> = {}
   if (name !== undefined) updates.name = String(name).trim().slice(0, 500)
   if (sort_order !== undefined) updates.sort_order = Math.round(Number(sort_order))
   if (active !== undefined) updates.active = Boolean(active)
