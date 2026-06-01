@@ -4,6 +4,7 @@ import {
   Plus, X, Pencil, Trash2, Check, Paperclip,
   FileText, Image as ImageIcon, Download,
 } from 'lucide-react'
+import Modal from '@/components/ui/Modal'
 import type { SharedLocation } from './AdminShell'
 
 type LocationReport = {
@@ -182,10 +183,13 @@ function AttachmentsPanel({ reportId }: { reportId: string }) {
     if (fileRef.current) fileRef.current.value = ''
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm('למחוק קובץ זה?')) return
-    await fetch(`/api/admin/location-report-attachments?id=${id}`, { method: 'DELETE' })
-    setAttachments(prev => prev.filter(a => a.id !== id))
+  const [deleteAttachId, setDeleteAttachId] = useState<string | null>(null)
+
+  async function confirmDeleteAttachment() {
+    if (!deleteAttachId) return
+    const res = await fetch(`/api/admin/location-report-attachments?id=${deleteAttachId}`, { method: 'DELETE' })
+    if (res.ok) setAttachments(prev => prev.filter(a => a.id !== deleteAttachId))
+    setDeleteAttachId(null)
   }
 
   return (
@@ -219,7 +223,7 @@ function AttachmentsPanel({ reportId }: { reportId: string }) {
                     {a.url && <img src={a.url} alt={a.file_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
                     {!a.url && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}><ImageIcon size={20} /></div>}
                   </div>
-                  <button onClick={() => handleDelete(a.id)}
+                  <button onClick={() => setDeleteAttachId(a.id)}
                     style={{ position: 'absolute', top: 2, left: 2, background: 'rgba(0,0,0,.5)', border: 'none', borderRadius: 4, color: '#fff', cursor: 'pointer', padding: '1px 4px', lineHeight: 1 }}>
                     <X size={10} />
                   </button>
@@ -241,7 +245,7 @@ function AttachmentsPanel({ reportId }: { reportId: string }) {
                 </a>
               )}
               <button className="button button--icon button--ghost" style={{ padding: '2px 4px', color: 'var(--danger)' }}
-                onClick={() => handleDelete(a.id)} title="מחק">
+                onClick={() => setDeleteAttachId(a.id)} title="מחק">
                 <Trash2 size={13} />
               </button>
             </div>
@@ -250,6 +254,14 @@ function AttachmentsPanel({ reportId }: { reportId: string }) {
       )}
 
       {lightbox && <Lightbox url={lightbox} onClose={() => setLightbox(null)} />}
+
+      <Modal open={!!deleteAttachId} onClose={() => setDeleteAttachId(null)} title="מחיקת קובץ"
+        footer={<>
+          <button className="button button--ghost" onClick={() => setDeleteAttachId(null)}>ביטול</button>
+          <button className="button button--danger" onClick={confirmDeleteAttachment}>מחק</button>
+        </>}>
+        <p>האם אתה בטוח שברצונך למחוק קובץ זה?</p>
+      </Modal>
     </div>
   )
 }
@@ -298,8 +310,8 @@ function FollowupsPanel({ reportId }: { reportId: string }) {
   }
 
   async function deleteFollowup(id: string) {
-    await fetch(`/api/admin/location-report-followups?id=${id}`, { method: 'DELETE' })
-    setFollowups(prev => prev.filter(f => f.id !== id))
+    const res = await fetch(`/api/admin/location-report-followups?id=${id}`, { method: 'DELETE' })
+    if (res.ok) setFollowups(prev => prev.filter(f => f.id !== id))
   }
 
   const open = followups.filter(f => !f.completed)
@@ -400,7 +412,7 @@ function ReportDetailModal({ report, onClose, onEdit, onDelete }: {
           </div>
           <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
             <button className="button button--icon button--ghost" onClick={onEdit} title="ערוך"><Pencil size={16} /></button>
-            <button className="button button--icon button--ghost" style={{ color: 'var(--danger)' }} onClick={onDelete} title="מחק"><Trash2 size={16} /></button>
+            <button className="button button--icon button--ghost" style={{ color: 'var(--danger)' }} onClick={() => { onClose(); onDelete() }} title="מחק"><Trash2 size={16} /></button>
             <button className="button button--icon button--ghost" onClick={onClose}><X size={18} /></button>
           </div>
         </div>
@@ -473,11 +485,14 @@ export default function AdminReportTab({ refreshKey, locations }: Props) {
     return true
   })
 
-  async function handleDelete(id: string) {
-    if (!confirm('למחוק דוח זה?')) return
-    await fetch(`/api/admin/location-reports?id=${id}`, { method: 'DELETE' })
-    setReports(prev => prev.filter(r => r.id !== id))
-    if (selected?.id === id) setSelected(null)
+  const [deleteReportId, setDeleteReportId] = useState<string | null>(null)
+
+  async function confirmDeleteReport() {
+    if (!deleteReportId) return
+    await fetch(`/api/admin/location-reports?id=${deleteReportId}`, { method: 'DELETE' })
+    setReports(prev => prev.filter(r => r.id !== deleteReportId))
+    if (selected?.id === deleteReportId) setSelected(null)
+    setDeleteReportId(null)
   }
 
   return (
@@ -551,7 +566,7 @@ export default function AdminReportTab({ refreshKey, locations }: Props) {
                     <Pencil size={14} />
                   </button>
                   <button className="button button--icon button--ghost" style={{ padding: '4px', color: 'var(--danger)' }}
-                    onClick={e => { e.stopPropagation(); handleDelete(r.id) }} title="מחק">
+                    onClick={e => { e.stopPropagation(); setDeleteReportId(r.id) }} title="מחק">
                     <Trash2 size={14} />
                   </button>
                 </div>
@@ -582,9 +597,18 @@ export default function AdminReportTab({ refreshKey, locations }: Props) {
           report={selected}
           onClose={() => setSelected(null)}
           onEdit={() => { setEditing(selected); setSelected(null) }}
-          onDelete={() => handleDelete(selected.id)}
+          onDelete={() => setDeleteReportId(selected.id)}
         />
       )}
+
+      {/* Delete report confirmation */}
+      <Modal open={!!deleteReportId} onClose={() => setDeleteReportId(null)} title="מחיקת דוח"
+        footer={<>
+          <button className="button button--ghost" onClick={() => setDeleteReportId(null)}>ביטול</button>
+          <button className="button button--danger" onClick={confirmDeleteReport}>מחק</button>
+        </>}>
+        <p>האם אתה בטוח שברצונך למחוק דוח זה? הפעולה אינה הפיכה.</p>
+      </Modal>
     </div>
   )
 }

@@ -125,9 +125,9 @@ export default function ScanPage() {
             הפעולה נרשמה בהצלחה במערכת.
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%', maxWidth: 280 }}>
-            {result.action_type === 'entry' && (
-              <button className="button button--primary" onClick={() => router.push('/inspector')}>
-                המשך לרשימת בדיקות
+            {result.action_type === 'entry' && result.location_id && (
+              <button className="button button--primary" onClick={() => router.push(`/inspector/location/${result.location_id}`)}>
+                צפה בפרטי המקום
               </button>
             )}
             <button className="button button--ghost" onClick={() => router.push('/inspector')}>

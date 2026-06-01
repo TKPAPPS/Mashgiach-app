@@ -24,7 +24,9 @@ export default function DashboardTab({ refreshKey, inspectors, locations }: Prop
 
   useEffect(() => { loadAll() }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    const id = setInterval(() => loadAll(), 30000)
+    const id = setInterval(() => {
+      if (!document.hidden) loadAll()
+    }, 30000)
     return () => clearInterval(id)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -44,7 +46,7 @@ export default function DashboardTab({ refreshKey, inspectors, locations }: Prop
         .select('id,action_type,location_id,inspector_id,internal_status,device_lat,device_lng,distance_meters,created_at,inspector:profiles(id,full_name),location:locations(id,name,city)')
         .order('created_at', { ascending: false }).limit(50),
       supabase.from('gps_alerts')
-        .select('id,created_at,action_type,distance_meters,read,inspector:profiles(id,full_name),location:locations(id,name,city)')
+        .select('id,created_at,action_type,distance_meters,read,inspector:profiles(id,full_name),location:locations(id,name,city),visit_log:visit_logs(device_lat,device_lng)')
         .eq('read', false).order('created_at', { ascending: false }).limit(10),
       supabase.from('visit_logs').select('id', { count: 'estimated', head: true }),
       supabase.from('visit_logs').select('id', { count: 'estimated', head: true }).gte('created_at', monthStart),
@@ -119,7 +121,7 @@ export default function DashboardTab({ refreshKey, inspectors, locations }: Prop
           </div>
           <div className="tableWrap">
             <table>
-              <thead><tr><th>זמן</th><th>משגיח</th><th>מקום</th><th>פעולה</th><th>מרחק מהמקום</th><th></th></tr></thead>
+              <thead><tr><th>זמן</th><th>משגיח</th><th>מקום</th><th>פעולה</th><th>מרחק מהמקום</th><th>מיקום</th><th></th></tr></thead>
               <tbody>
                 {alerts.map(a => (
                   <tr key={a.id}>
@@ -131,6 +133,14 @@ export default function DashboardTab({ refreshKey, inspectors, locations }: Prop
                       <span style={{ fontWeight: 600, color: 'var(--warning)' }}>
                         {a.distance_meters ? `${a.distance_meters} מ׳` : '-'}
                       </span>
+                    </td>
+                    <td>
+                      {(() => {
+                        const vl = a.visit_log as { device_lat?: number | null; device_lng?: number | null } | undefined
+                        return vl?.device_lat && vl?.device_lng
+                          ? <a className="coordsLink" href={`https://www.google.com/maps?q=${vl.device_lat},${vl.device_lng}`} target="_blank" rel="noreferrer">מפה</a>
+                          : <span className="mutedCell">-</span>
+                      })()}
                     </td>
                     <td>
                       <button className="button button--ghost button--sm" onClick={async () => {

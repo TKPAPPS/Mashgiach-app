@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
   const service = createServiceClient()
   const { data, error } = await service
     .from('admin_report_followups')
-    .insert({ report_id, text: text.trim(), completed: false, completed_at: null })
+    .insert({ report_id, text: String(text).trim().slice(0, 1000), completed: false, completed_at: null })
     .select('id,report_id,text,completed,completed_at,created_at')
     .single()
 
@@ -55,7 +55,7 @@ export async function PATCH(req: NextRequest) {
 
   const service = createServiceClient()
   const updates: Partial<{ text: string; completed: boolean; completed_at: string | null }> = {}
-  if (text !== undefined) updates.text = text
+  if (text !== undefined) updates.text = String(text).trim().slice(0, 1000)
   if (completed !== undefined) {
     updates.completed = completed
     updates.completed_at = completed ? new Date().toISOString() : null

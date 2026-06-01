@@ -243,14 +243,14 @@ export default function InspectorLocationPage({ params }: { params: Promise<{ id
             <div className="card__body">
               <div className="checklistWrap">
                 {checklistItems.map(item => (
-                  <div key={item.id} className="checkItem">
-                    <input type="checkbox" style={{ accentColor: 'var(--primary)' }} />
+                  <div key={item.id} className="checkItem" style={{ opacity: 0.7, cursor: 'default' }}>
+                    <input type="checkbox" disabled style={{ accentColor: 'var(--primary)' }} />
                     <span>{item.name}</span>
                   </div>
                 ))}
               </div>
               <p className="textSm textMuted" style={{ marginTop: 10 }}>
-                * בדיקות נרשמות אוטומטית עם יציאה
+                סמן פריטים אלה עם יציאה מהמקום
               </p>
             </div>
           </div>

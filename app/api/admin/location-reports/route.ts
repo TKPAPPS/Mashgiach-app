@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+
 async function requireAdmin() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -31,7 +33,7 @@ export async function GET(req: NextRequest) {
   if (location_id) q = q.eq('location_id', location_id)
 
   const { data, error } = await q
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return NextResponse.json({ error: 'שגיאה בטעינת הדוחות' }, { status: 500 })
   return NextResponse.json(data ?? [])
 }
 
@@ -40,15 +42,20 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { location_id, title, body, visit_date } = await req.json()
-  if (!location_id || !title) return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
+  if (!location_id || !title?.trim()) return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
+
+  const safeDate = ISO_DATE_RE.test(visit_date ?? '') ? visit_date : new Date().toISOString().slice(0, 10)
 
   const service = createServiceClient()
   const { data, error } = await service.from('admin_location_reports').insert({
-    location_id, admin_id: user.id, title, body: body || null,
-    visit_date: visit_date || new Date().toISOString().slice(0, 10),
+    location_id,
+    admin_id: user.id,
+    title: String(title).trim().slice(0, 500),
+    body: body ? String(body).trim().slice(0, 20000) : null,
+    visit_date: safeDate,
   }).select('*, location:locations(id,name,city,address), admin:profiles(id,full_name)').single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return NextResponse.json({ error: 'שגיאה בשמירת הדוח' }, { status: 500 })
   return NextResponse.json(data)
 }
 
@@ -58,14 +65,22 @@ export async function PATCH(req: NextRequest) {
 
   const { id, title, body, visit_date } = await req.json()
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
+  if (title !== undefined && !String(title).trim()) {
+    return NextResponse.json({ error: 'Title cannot be empty' }, { status: 400 })
+  }
+
+  const safeDate = ISO_DATE_RE.test(visit_date ?? '') ? visit_date : undefined
 
   const service = createServiceClient()
   const { data, error } = await service.from('admin_location_reports').update({
-    title, body: body ?? null, visit_date,
+    ...(title !== undefined && { title: String(title).trim().slice(0, 500) }),
+    ...(body !== undefined && { body: body ? String(body).trim().slice(0, 20000) : null }),
+    ...(safeDate && { visit_date: safeDate }),
     updated_at: new Date().toISOString(),
-  }).eq('id', id).select('*, location:locations(id,name,city,address), admin:profiles(id,full_name)').single()
+  }).eq('id', id).eq('admin_id', user.id)
+    .select('*, location:locations(id,name,city,address), admin:profiles(id,full_name)').single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return NextResponse.json({ error: 'שגיאה בעדכון הדוח' }, { status: 500 })
   return NextResponse.json(data)
 }
 
@@ -77,7 +92,18 @@ export async function DELETE(req: NextRequest) {
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
   const service = createServiceClient()
-  const { error } = await service.from('admin_location_reports').delete().eq('id', id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Delete storage files for all attachments first
+  const { data: attachments } = await service
+    .from('admin_report_attachments')
+    .select('file_path')
+    .eq('report_id', id)
+  if (attachments && attachments.length > 0) {
+    await service.storage.from('admin-reports').remove(attachments.map(a => a.file_path))
+  }
+
+  // Scope delete to admin_id so admins can only delete their own reports
+  const { error } = await service.from('admin_location_reports').delete().eq('id', id).eq('admin_id', user.id)
+  if (error) return NextResponse.json({ error: 'שגיאה במחיקת הדוח' }, { status: 500 })
   return NextResponse.json({ ok: true })
 }

@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { MapPin, QrCode, AlertTriangle, Calendar, User, LogOut, Camera, Trash2 } from 'lucide-react'
+import { MapPin, QrCode, AlertTriangle, Calendar, User, LogOut, Camera, Trash2, History } from 'lucide-react'
 import Image from 'next/image'
 import { formatRelative, formatDate } from '@/lib/utils/format'
 import type { Location, Profile, VisitLog } from '@/lib/supabase/types'
@@ -435,8 +435,77 @@ function AbsenceForm({ profile, locations }: { profile: Profile | null; location
   )
 }
 
+type SupabaseClient = ReturnType<typeof createClient>
+
+type AbsenceRow = { id: string; request_type: string; start_date: string | null; end_date: string | null; admin_status: string; created_at: string }
+type DeficiencyRow = { id: string; report_type: string; description: string; admin_status: string; created_at: string; location: { name: string } | null }
+
+const STATUS_HE: Record<string, string> = { pending: 'ממתין', approved: 'אושר', denied: 'נדחה', open: 'פתוח', in_progress: 'בטיפול', resolved: 'טופל' }
+const TYPE_HE: Record<string, string> = { vacation: 'חופשה', absence: 'היעדרות', replacement: 'החלפה', other: 'אחר', deficiency: 'ליקוי', note: 'הערה' }
+
+function InspectorHistory({ supabase, inspectorId }: { supabase: SupabaseClient; inspectorId: string }) {
+  const [absences, setAbsences] = useState<AbsenceRow[]>([])
+  const [reports, setReports] = useState<DeficiencyRow[]>([])
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    supabase.from('absence_requests')
+      .select('id,request_type,start_date,end_date,admin_status,created_at')
+      .eq('inspector_id', inspectorId)
+      .order('created_at', { ascending: false }).limit(20)
+      .then(({ data }) => setAbsences((data ?? []) as AbsenceRow[]))
+    supabase.from('deficiency_reports')
+      .select('id,report_type,description,admin_status,created_at,location:locations(name)')
+      .eq('inspector_id', inspectorId)
+      .order('created_at', { ascending: false }).limit(20)
+      .then(({ data }) => setReports((data ?? []) as DeficiencyRow[]))
+  }, [open, supabase, inspectorId])
+
+  return (
+    <div style={{ marginTop: 16, width: '100%' }}>
+      <button className="button button--ghost" style={{ width: '100%', gap: 8 }} onClick={() => setOpen(o => !o)}>
+        <History size={16} /> {open ? 'הסתר היסטוריה' : 'הצג בקשות ודיווחים שלי'}
+      </button>
+      {open && (
+        <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div>
+            <p style={{ fontWeight: 600, fontSize: '.85rem', marginBottom: 6 }}>בקשות היעדרות</p>
+            {absences.length === 0
+              ? <p style={{ color: 'var(--muted)', fontSize: '.82rem' }}>אין בקשות.</p>
+              : absences.map(a => (
+                <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: '.82rem' }}>
+                  <span>{TYPE_HE[a.request_type] ?? a.request_type}{a.start_date ? ` | ${a.start_date}` : ''}</span>
+                  <span className={`badge badge--${a.admin_status === 'approved' ? 'success' : a.admin_status === 'denied' ? 'danger' : 'warning'}`} style={{ fontSize: '.72rem' }}>
+                    {STATUS_HE[a.admin_status] ?? a.admin_status}
+                  </span>
+                </div>
+              ))}
+          </div>
+          <div>
+            <p style={{ fontWeight: 600, fontSize: '.85rem', marginBottom: 6 }}>דיווחים שלי</p>
+            {reports.length === 0
+              ? <p style={{ color: 'var(--muted)', fontSize: '.82rem' }}>אין דיווחים.</p>
+              : reports.map(r => (
+                <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: '.82rem' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ color: 'var(--muted)', marginLeft: 4 }}>{(r.location as { name: string } | null)?.name ?? '-'}</span>
+                    <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>{r.description.slice(0, 60)}</span>
+                  </div>
+                  <span className={`badge badge--${r.admin_status === 'resolved' ? 'success' : r.admin_status === 'in_progress' ? 'warning' : 'danger'}`} style={{ fontSize: '.72rem', flexShrink: 0 }}>
+                    {STATUS_HE[r.admin_status] ?? r.admin_status}
+                  </span>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ProfileView({ profile, email }: { profile: Profile; email: string | null }) {
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
   const [pwOpen, setPwOpen] = useState(false)
   const [contractLoading, setContractLoading] = useState(false)
 
@@ -504,6 +573,8 @@ function ProfileView({ profile, email }: { profile: Profile; email: string | nul
           {contractLoading ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'צפה בחוזה'}
         </button>
       )}
+
+      <InspectorHistory supabase={supabase} inspectorId={profile.id} />
 
       <div style={{ marginTop: 20, width: '100%' }}>
         {!pwOpen ? (

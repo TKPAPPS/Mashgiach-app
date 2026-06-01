@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { distanceMeters, GPS_THRESHOLD_METERS } from '@/lib/utils/gps'
+import { notifyAdmins } from '@/lib/utils/notifyAdmins'
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
@@ -111,29 +112,22 @@ export async function POST(req: NextRequest) {
     status: 'success',
   })
 
-  // Send push notification to admins
+  // Notify admins directly via utility (no unauthenticated HTTP hop)
   try {
-    await fetch(`${req.nextUrl.origin}/api/push/notify`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: action_type === 'entry' ? 'כניסה חדשה' : 'יציאה חדשה',
-        body: `${location.name}`,
-        url: '/admin',
-      }),
+    await notifyAdmins({
+      title: action_type === 'entry' ? 'כניסה חדשה' : 'יציאה חדשה',
+      body: location.name,
+      url: '/admin',
     })
-  } catch {
-    // Non-fatal
-  }
+  } catch { /* non-fatal */ }
 
-  // Check active checklist items server-side so the scan page can redirect without a second round-trip
+  // Check active checklist items so the scan page can redirect without a second round-trip
   let has_checklist = false
   if (action_type === 'exit') {
     const { count } = await service.from('checklist_items').select('*', { count: 'exact', head: true }).eq('active', true)
     has_checklist = (count ?? 0) > 0
   }
 
-  // Always return generic success to inspector; include has_checklist and visit_log_id for exit redirect
   return NextResponse.json({
     success: true,
     action_type,

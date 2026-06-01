@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
-  RefreshCw, LogOut,
+  RefreshCw, LogOut, Bell, BellOff,
   CalendarDays, MapPin, Users, FileText,
   AlertTriangle, CheckSquare, ScrollText, ShieldCheck, ClipboardList
 } from 'lucide-react'
@@ -32,7 +32,7 @@ const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
   { id: 'dashboard',    label: 'דשבורד',        Icon: CalendarDays },
   { id: 'locations',    label: 'מקומות',         Icon: MapPin },
   { id: 'inspectors',   label: 'משגיחים',        Icon: Users },
-  { id: 'reports',      label: 'דיווחים',        Icon: FileText },
+  { id: 'reports',      label: 'לוגי ביקורים',   Icon: FileText },
   { id: 'deficiencies', label: 'ליקויי כשרות',   Icon: AlertTriangle },
   { id: 'absences',     label: 'היעדרויות',      Icon: CalendarDays },
   { id: 'checklist',    label: 'רשימת בדיקות',   Icon: CheckSquare },
@@ -48,6 +48,7 @@ export default function AdminShell() {
   const [mountedTabs, setMountedTabs] = useState<Set<Tab>>(new Set(['dashboard'] as Tab[]))
   const [profile, setProfile] = useState<Profile | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [pushSubscribed, setPushSubscribed] = useState(false)
 
   const [sharedInspectors, setSharedInspectors] = useState<SharedInspector[]>([])
   const [sharedLocations,  setSharedLocations]  = useState<SharedLocation[]>([])
@@ -104,6 +105,42 @@ export default function AdminShell() {
     setMountedTabs(prev => new Set([...prev, newTab]))
   }
 
+  useEffect(() => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
+    navigator.serviceWorker.ready.then(reg => {
+      reg.pushManager.getSubscription().then(sub => setPushSubscribed(!!sub))
+    }).catch(() => {})
+  }, [])
+
+  async function togglePush() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      alert('Push notifications are not supported in this browser.')
+      return
+    }
+    const reg = await navigator.serviceWorker.ready
+    const existing = await reg.pushManager.getSubscription()
+    if (existing) {
+      await existing.unsubscribe()
+      await fetch('/api/push/subscribe', {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endpoint: existing.endpoint }),
+      })
+      setPushSubscribed(false)
+    } else {
+      const permission = await Notification.requestPermission()
+      if (permission !== 'granted') return
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+      })
+      await fetch('/api/push/subscribe', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(sub.toJSON()),
+      })
+      setPushSubscribed(true)
+    }
+  }
+
   async function logout() {
     if (process.env.NEXT_PUBLIC_DEV_BYPASS === 'true') return
     await supabase.auth.signOut()
@@ -136,6 +173,12 @@ export default function AdminShell() {
           <span>מנהל</span>
         </div>
         <div className="appHeader__actions">
+          <button className="button button--icon button--ghost" onClick={togglePush}
+            aria-label={pushSubscribed ? 'בטל התראות' : 'הפעל התראות'}
+            title={pushSubscribed ? 'התראות פעילות - לחץ לביטול' : 'הפעל התראות דחיפה'}
+            style={{ color: '#fff', border: 'none', opacity: .85 }}>
+            {pushSubscribed ? <Bell size={16} /> : <BellOff size={16} />}
+          </button>
           <button className="button button--icon button--ghost" onClick={refresh} aria-label="רענון" title="רענון"
             style={{ color: '#fff', border: 'none', opacity: .85 }}>
             <RefreshCw size={16} />

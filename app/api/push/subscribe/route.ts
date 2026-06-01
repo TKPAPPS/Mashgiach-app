@@ -26,7 +26,8 @@ export async function DELETE(req: NextRequest) {
 
   const { endpoint } = await req.json()
   const service = createServiceClient()
-  await service.from('push_subscriptions').delete().eq('endpoint', endpoint)
+  // Scope by user_id so no one can unsubscribe another user's endpoint
+  await service.from('push_subscriptions').delete().eq('endpoint', endpoint).eq('user_id', user.id)
 
   return NextResponse.json({ success: true })
 }
