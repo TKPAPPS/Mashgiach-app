@@ -39,7 +39,9 @@ export async function GET(req: NextRequest) {
     .eq('report_id', report_id).order('created_at')
 
   const result = await Promise.all((data ?? []).map(async (a) => {
-    const { data: signed } = await service.storage.from(BUCKET).createSignedUrl(a.file_path, 3600)
+    // Documents get Content-Disposition: attachment so the browser downloads rather than rendering
+    const opts = a.file_type === 'document' ? { download: a.file_name } : {}
+    const { data: signed } = await service.storage.from(BUCKET).createSignedUrl(a.file_path, 3600, opts)
     return { ...a, url: signed?.signedUrl ?? null }
   }))
   return NextResponse.json(result)
@@ -120,7 +122,14 @@ export async function DELETE(req: NextRequest) {
     .eq('id', id)
     .eq('admin_id', user.id)
     .single()
-  if (att) await service.storage.from(BUCKET).remove([att.file_path])
-  await service.from('admin_report_attachments').delete().eq('id', id).eq('admin_id', user.id)
+  if (!att) return NextResponse.json({ ok: true }) // already gone or not owned
+
+  // Delete DB row first — if storage removal fails, the orphaned blob is inaccessible
+  // (no signed URL can be generated for it). The reverse order risks a dangling DB row.
+  const { error: dbErr } = await service.from('admin_report_attachments')
+    .delete().eq('id', id).eq('admin_id', user.id)
+  if (dbErr) return NextResponse.json({ error: 'שגיאה במחיקת הקובץ' }, { status: 500 })
+
+  await service.storage.from(BUCKET).remove([att.file_path])
   return NextResponse.json({ ok: true })
 }

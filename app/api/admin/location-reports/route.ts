@@ -28,8 +28,8 @@ export async function GET(req: NextRequest) {
     .order('created_at', { ascending: false })
     .limit(300)
 
-  if (from) q = q.gte('visit_date', from)
-  if (to) q = q.lte('visit_date', to)
+  if (from && ISO_DATE_RE.test(from)) q = q.gte('visit_date', from)
+  if (to   && ISO_DATE_RE.test(to))   q = q.lte('visit_date', to)
   if (location_id) q = q.eq('location_id', location_id)
 
   const { data, error } = await q

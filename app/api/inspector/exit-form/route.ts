@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
       note: c.note ?? null,
     }))
     const { error } = await service.from('visit_checks').insert(rows)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return NextResponse.json({ error: 'שגיאה בשמירת הבדיקות' }, { status: 500 })
   }
 
   return NextResponse.json({ success: true })

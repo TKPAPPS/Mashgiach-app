@@ -10,6 +10,23 @@ async function requireAdmin() {
   return user
 }
 
+// Verify a followup's parent report belongs to the requesting admin.
+// admin_report_followups has no admin_id column, so we join through the parent report.
+async function requireFollowupOwner(service: ReturnType<typeof createServiceClient>, followupId: string, adminId: string) {
+  const { data: fu } = await service
+    .from('admin_report_followups')
+    .select('report_id')
+    .eq('id', followupId)
+    .single()
+  if (!fu) return false
+  const { data: rpt } = await service
+    .from('admin_location_reports')
+    .select('admin_id')
+    .eq('id', fu.report_id)
+    .single()
+  return rpt?.admin_id === adminId
+}
+
 export async function GET(req: NextRequest) {
   const user = await requireAdmin()
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
@@ -24,7 +41,7 @@ export async function GET(req: NextRequest) {
     .eq('report_id', report_id)
     .order('created_at')
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return NextResponse.json({ error: 'שגיאה בטעינת הפעולות' }, { status: 500 })
   return NextResponse.json(data ?? [])
 }
 
@@ -42,7 +59,7 @@ export async function POST(req: NextRequest) {
     .select('id,report_id,text,completed,completed_at,created_at')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return NextResponse.json({ error: 'שגיאה בהוספת פעולה' }, { status: 500 })
   return NextResponse.json(data)
 }
 
@@ -54,6 +71,12 @@ export async function PATCH(req: NextRequest) {
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
   const service = createServiceClient()
+
+  // Scope: only the admin who owns the parent report can edit followups
+  if (!await requireFollowupOwner(service, id, user.id)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
   const updates: Partial<{ text: string; completed: boolean; completed_at: string | null }> = {}
   if (text !== undefined) updates.text = String(text).trim().slice(0, 1000)
   if (completed !== undefined) {
@@ -68,7 +91,7 @@ export async function PATCH(req: NextRequest) {
     .select('id,report_id,text,completed,completed_at,created_at')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return NextResponse.json({ error: 'שגיאה בעדכון הפעולה' }, { status: 500 })
   return NextResponse.json(data)
 }
 
@@ -80,7 +103,13 @@ export async function DELETE(req: NextRequest) {
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
   const service = createServiceClient()
+
+  // Scope: only the admin who owns the parent report can delete followups
+  if (!await requireFollowupOwner(service, id, user.id)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
   const { error } = await service.from('admin_report_followups').delete().eq('id', id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return NextResponse.json({ error: 'שגיאה במחיקת הפעולה' }, { status: 500 })
   return NextResponse.json({ ok: true })
 }
