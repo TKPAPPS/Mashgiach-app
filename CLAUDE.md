@@ -1,221 +1,157 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 @AGENTS.md
 
 # Mashgiach App: Developer Reference
 
+## Commands
+
+```bash
+npm run dev      # start dev server (Turbopack)
+npm run build    # production build + TypeScript check
+npm run lint     # ESLint
+```
+
+No test runner is configured. Verification is done with Playwright against the live dev server or production URL `https://mashgiach.tkpapps.com`.
+
 ## Copy rule: no em dashes
-Never use the em dash character (Unicode U+2014) in any UI copy, error messages, buttons, tooltips, labels, modal titles, push notification bodies, comments, or documentation. Use a colon, comma, hyphen, parentheses, or sentence break instead. This applies to all future code and documentation in this project.
+
+Never use the em dash character (Unicode U+2014) in any UI copy, error messages, buttons, tooltips, labels, modal titles, push notification bodies, comments, or documentation. Use a colon, comma, hyphen, parentheses, or sentence break instead.
 
 ## Stack
-- Next.js (App Router, Turbopack). See AGENTS.md for version-specific notes.
-- Supabase shared project `avgzxdfweopkmdldkivc` (hosted, not local)
+
+- Next.js 16 (App Router, Turbopack). See AGENTS.md for version-specific notes.
+- Supabase project `avgzxdfweopkmdldkivc` (hosted, not local)
 - `@supabase/ssr` for cookie-based SSR auth; `@supabase/supabase-js` directly for service-role client
 - Deployed on Vercel (repo: `TKPAPPS/Mashgiach-app`, public repo required for Hobby plan)
+- Service worker + web-push for push notifications
+
+## Environment variables
+
+```
+NEXT_PUBLIC_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY
+SUPABASE_SERVICE_ROLE_KEY         # sb_secret_ format (NOT a JWT)
+NEXT_PUBLIC_VAPID_PUBLIC_KEY
+VAPID_PRIVATE_KEY
+VAPID_SUBJECT                     # mailto: address
+NEXT_PUBLIC_BASE_URL              # https://mashgiach.tkpapps.com in production
+```
+
+## Architecture overview
+
+Two user-facing surfaces sharing a single Next.js app:
+
+**Inspector side** (`/inspector/*`) — mobile-first (max-width 480px), bottom nav, designed for phones. Inspectors scan QR codes, submit deficiency reports, request absences, and view location details.
+
+**Admin side** (`/admin`) — full-width dashboard SPA rendered as a single page with tab switching. All admin state lives in `AdminShell.tsx` (tab state, shared lookups, refreshKey). Ten tabs mount lazily and stay in DOM hidden with `display:none` when inactive — never unmount on tab switch.
+
+```
+app/
+  admin/page.tsx          → renders <AdminShell />
+  inspector/page.tsx      → inspector home (all 4 tabs: home, report, absence, profile)
+  inspector/scan/         → QR camera scan page
+  inspector/checklist/    → post-exit checklist
+  inspector/location/[id] → location detail
+  api/
+    admin/                → admin API routes (all require requireAdmin())
+    inspector/            → inspector API routes (require auth, not role check)
+    push/                 → subscribe (POST/DELETE) and notify (POST, admin only)
+
+components/admin/         → all admin tab components
+lib/
+  supabase/
+    client.ts             → createClient() for browser components
+    server.ts             → createClient() (async, SSR) + createServiceClient() (sync)
+    types.ts              → all DB types + Database type for Supabase generics
+  utils/
+    format.ts             → formatDateTime, formatDate, formatRelative, statusLabel, actionLabel, etc.
+    gps.ts                → distanceMeters(), GPS_THRESHOLD_METERS (100m)
+    notifyAdmins.ts       → push notification utility (call directly, never via HTTP)
+    excel.ts              → exportToExcel()
+```
 
 ## Two Supabase clients: critical distinction
+
 `lib/supabase/server.ts` exports two clients:
 
-- `createClient()`: async, uses `@supabase/ssr` with cookies, respects RLS, for user-authenticated requests
-- `createServiceClient()`: sync (NOT async), uses `@supabase/supabase-js` directly with the service role key, bypasses RLS
+- `createClient()`: **async**, uses `@supabase/ssr` with cookies, respects RLS — for authenticated user requests
+- `createServiceClient()`: **sync (NOT async)**, uses `@supabase/supabase-js` directly with service role key, bypasses RLS
 
-**Never `await createServiceClient()`** : it is synchronous. Using `await` on it silently passes but the key is treated as anon-level by `@supabase/ssr`, breaking RLS bypass. All API routes that need elevated access must use `const service = createServiceClient()` (no await).
+**Never `await createServiceClient()`**: it is synchronous. Using `await` on it silently passes but the key is treated as anon-level by `@supabase/ssr`, breaking RLS bypass. All routes needing elevated access must use `const service = createServiceClient()` (no await).
 
-The service role key (`SUPABASE_SERVICE_ROLE_KEY`) is in `sb_secret_` format (Supabase new-format key), not a JWT. It only works correctly when used via `@supabase/supabase-js` directly.
+The service role key (`SUPABASE_SERVICE_ROLE_KEY`) is in `sb_secret_` format, not a JWT. It only works correctly when used via `@supabase/supabase-js` directly.
 
 ## Roles
+
 - `admin`: full access via admin panel at `/admin`
 - `mashgiach`: inspector access at `/inspector`
-- Role is stored in `profiles.role`; RLS policies enforce it via a `mashgiach_is_admin()` DB function
+- Role stored in `profiles.role`; RLS policies enforce it via `mashgiach_is_admin()` DB function
 
 ## API routes: patterns
-All admin API routes verify role:
-1. `await createClient()` to get session user
-2. Query `profiles.role` for that user, check for `admin`
-3. `createServiceClient()` (no await) for elevated DB/auth operations
+
+All admin API routes verify role via `requireAdmin()`:
+```typescript
+async function requireAdmin() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+  if (profile?.role !== 'admin') return null
+  return user
+}
+```
 
 Inspector API routes authenticate but do NOT check role (inspectors hit `/api/inspector/*`).
 
+**Error messages**: return generic Hebrew strings (`'שגיאה בשמירה'` etc.), not raw `error.message` from Supabase — schema fingerprinting risk.
+
+## Push notifications: always use the utility
+
+**Never call `fetch('/api/push/notify', ...)`** from within server-side code. The HTTP endpoint is admin-auth-gated and exists only for potential future admin UI use. Instead, call the utility directly:
+
+```typescript
+import { notifyAdmins } from '@/lib/utils/notifyAdmins'
+await notifyAdmins({ title: '...', body: '...', url: '/admin' })
+```
+
+The utility handles VAPID config check, fetches admin subscriptions, sends via `web-push`, and cleans up expired subscriptions.
+
+**Push subscription UI**: a Bell/BellOff button in the admin header (`AdminShell.tsx`) calls `PushManager.subscribe()` and POSTs to `/api/push/subscribe`. The DELETE endpoint is scoped by `user_id` to prevent cross-user unsubscription.
+
 ## Inspector scan flow (security design)
+
 - `/api/inspector/scan` always returns `{ success: true }` to the inspector regardless of outcome
-- Internal status is logged privately in `visit_logs.internal_status`
-- Four internal statuses: `success`, `unauthorized`, `invalid_location`, `gps_mismatch`
-- GPS threshold: 100 metres (see `lib/utils/gps.ts` and `GPS_THRESHOLD_METERS`)
-- `gps_mismatch` creates a row in `gps_alerts` (admin-visible, dismissible)
-- The inspector never knows whether they triggered an alert
-- On a successful exit scan, the API response includes `visit_log_id` and `location_id`. The scan page uses these to redirect to the checklist if active checklist items exist.
+- Internal status logged privately in `visit_logs.internal_status`
+- Four statuses: `success`, `unauthorized`, `invalid_location`, `gps_mismatch`
+- GPS threshold: 100 metres (`GPS_THRESHOLD_METERS` in `lib/utils/gps.ts`)
+- `gps_mismatch` creates a `gps_alerts` row (admin-visible, dismissible; includes `visit_log_id` for GPS coord lookup)
+- On successful exit scan, API returns `visit_log_id` and `location_id`. Scan page redirects to checklist if active items exist.
+- On successful entry scan, "צפה בפרטי המקום" button navigates to `/inspector/location/{location_id}`
 
-## Inspector forms: must call API routes for any submission with side effects
-**Rule:** Any inspector form submission that triggers side effects (push notifications, elevated DB writes, system logs) MUST call a backend API route. Never insert directly from the client via `supabase.from(...).insert(...)`.
+## Inspector forms: must call API routes
 
-Reasons:
-- Direct client inserts run as the inspector's anon session; they bypass service-role logic
-- Direct inserts do not trigger push notifications to admins
-- Direct inserts have no server-side error handling; failures are silent to the user
+Any inspector submission with side effects MUST call a backend API route — never insert directly via the Supabase client. Current routes:
+- `/api/inspector/scan` — logs visit, validates GPS, creates alerts, notifies admins
+- `/api/inspector/report` — validates inspector is assigned to location, inserts deficiency, notifies admins
+- `/api/inspector/absence` — validates enum values and dates, validates replacement is a real mashgiach, notifies admins
+- `/api/inspector/exit-form` — validates ownership + freshness, batch-inserts visit_checks
 
-Current correct pattern:
-- Deficiency report: `fetch('/api/inspector/report', { method: 'POST', ... })`
-- Absence request: `fetch('/api/inspector/absence', { method: 'POST', ... })`
-- Exit-form checklist: `fetch('/api/inspector/exit-form', { method: 'POST', ... })`
+## File upload security (admin-reports bucket)
 
-What each API route does beyond insertion:
-- `/api/inspector/report`: inserts deficiency, then notifies admins via push
-- `/api/inspector/absence`: inserts absence request, then notifies admins via push
-- `/api/inspector/scan`: logs visit, validates GPS, creates gps_alerts if mismatch, logs to system_logs, notifies admins
-- `/api/inspector/exit-form`: validates ownership + freshness, deletes prior checks, batch-inserts visit_checks
-
-If you add a new inspector-facing form that writes to the DB, add it as an API route if it has any side effect, even if notification is not yet needed.
-
-## Checklist / exit-form workflow (implemented in Phase 2)
-After a successful exit scan, the scan API returns `visit_log_id` and `location_id`. The scan page checks for active checklist items client-side:
-- If items exist: redirects to `/inspector/checklist?visit_log_id=...&location_id=...`
-- If no items: shows normal success screen
-
-The checklist page (`app/inspector/checklist/page.tsx`) shows all active global checklist items. The inspector checks completed items and can add an optional note per item. Only checked items are saved.
-
-Behaviors:
-- Submit with zero checked items: inline confirmation required before submitting
-- Skip checklist: inline confirmation required before navigating home
-- Duplicate submission is handled idempotently: the API deletes existing `visit_checks` for the visit_log before inserting
-
-Security chain in `/api/inspector/exit-form`:
-1. Auth: user must be logged in
-2. Validate `visit_log_id` and `location_id` present
-3. Fetch the visit_log: verify `inspector_id === user.id`, `action_type === 'exit'`, `location_id` matches
-4. Reject if the visit_log is older than 24 hours
-5. Verify inspector is assigned to the location via `inspector_locations`
-6. Delete then re-insert visit_checks (idempotent)
-
-`checklist_items` is a global table (no `location_id` column). All locations share the same checklist.
-
-## Location create/edit: field scope
-`LocationForm` (module-level component in `LocationsTab.tsx`) includes all text fields on both create and edit:
-- Basic: name, city, address, QR code, GPS coords, status (edit only)
-- Contact: contact_name, contact_phone, contact_email, contact_notes
-- Kashrus: kashrus_procedure (free text)
-
-Fields that require the record ID and stay in `LocationDetailModal` only:
-- `kashrus_certificate_url`: file upload needs location ID for storage path
-- `kashrus_procedure_file_url`: same
-- Inspector assignment: needs location ID for `inspector_locations` join
-
-## Inspector authorization on location detail page
-`app/inspector/location/[id]/page.tsx` verifies the inspector is assigned to the location via `inspector_locations` before rendering. Unassigned inspectors are redirected to `/inspector`. Do not remove this check.
-
-## Absence request lifecycle
-`absence_requests` has an admin workflow:
-- `admin_status`: `pending` (default), `approved`, or `denied`
-- `admin_notes`: free text for admin reason/comment
-- Admin manages these in the Absences tab (inline status dropdown and notes save button)
-- Inspector submits via `fetch('/api/inspector/absence', ...)` which triggers a push notification
-
-## Admin password reset
-- Admin can reset any inspector's email and/or password via the key icon button in the Inspectors tab
-- Opens a focused modal, calls `PATCH /api/admin/users` with `{ id, email?, password? }`
-- Profile edit (pencil icon) only updates name, start date, vacation days; no credentials
-- Credentials and profile are deliberately separated to reduce accidental changes
-
-## Storage buckets
-- `contracts`: private; stores inspector employment contracts; URLs are generated on demand via signed URLs (1-hour expiry)
-- `certificates`: public; stores kosher certificates for locations
-- `kashrus-procedures`: private
-
-## Contract URL handling
-- `profiles.contract_url` stores the raw storage path (e.g. `contracts/<inspector-id>/file.pdf`), NOT a public URL.
-- Admin contract view: `GET /api/admin/contract-url?inspector_id=X` verifies admin role, generates a signed URL, returns `{ url }`. Opens in new tab.
-- Inspector contract view: `GET /api/inspector/contract-url` uses the authenticated user's own profile; inspector cannot fetch another inspector's contract.
-- Both routes handle both raw paths and legacy public URL format (extracts path from URL pattern) to support any rows that may have been stored differently.
-- Do NOT call `getPublicUrl` on the `contracts` bucket; it is private and will 403.
-- Full upload/view QA requires an actual uploaded contract file in the DB; automated QA only verified API auth behavior (401/404). Manual QA still pending (see Phase 4 remaining manual QA).
-
-## Reports and Logs: 30-day default window
-- `ReportsTab` and `SystemLogsTab` both default to fetching the last 30 days server-side (`.gte('created_at', thirtyDaysAgo)`).
-- The `from` filter state is initialized to 30 days ago. An explicit "טען" button re-fetches from the server with the current `from` date.
-- A Hebrew hint note is shown below the filter row: to view older data, change the start date and click "טען".
-- Client-side filters (inspector, location, action, `to` date, search) still apply to the loaded window without a re-fetch.
-
-## Inactive locations on inspector home
-- Inspectors see their inactive assigned locations but they are non-interactive: no click navigation, no scan button, no check-in badge.
-- The card is rendered at 55% opacity with `cursor: default`.
-- Only the "לא פעיל" badge is shown; the "בפנים"/"בחוץ" badge is hidden for inactive cards.
-
-## Checklist grouping in LocationDetailModal
-- The "בדיקות" (checks) tab groups `visit_checks` by `visit_log_id`.
-- Each group is rendered as a card with a shared header showing date and inspector name.
-- Fetch limit is 100 rows (was 20).
-
-## Deficiency admin notes
-- `DeficienciesTab` and `LocationDetailModal` deficiencies tab both use controlled input state for `admin_notes`.
-- A "שמור" button appears inline only when the value has changed from the stored value (dirty check).
-- The `onBlur`-based pattern has been removed to prevent data loss on tab navigation.
-
-## GPS alert lifecycle
-Alerts appear on the admin Dashboard when an inspector scans from > 100m away.
-- Informational and actionable: admin should investigate and dismiss
-- Individual dismiss: "סמן כנקרא" per row
-- Bulk dismiss: "סמן הכל כנקרא" button in header
-- Dismissed alerts (read=true) are hidden from the dashboard banner
-- Alerts are permanent in the `gps_alerts` table; only the `read` flag changes
-
-## QR code display
-- Admin Locations tab: the QR icon button opens a modal with a rendered QR image (`QRCodeSVG` from `qrcode.react`).
-- The QR code value is the location's `qr_code` string (e.g. `LOC-XXXX-XXXX`).
-- The raw text string is also shown below the image for manual entry.
-- A download button renders a 600px `QRCodeCanvas` offscreen and downloads it as PNG.
-- Inspector scan page accepts the QR value via camera scan or manual text entry.
-
-## Logs tab (SystemLogsTab)
-- Shows `visit_logs` (all scan attempts: entry, exit, invalid, unauthorized, GPS mismatch).
-- Dashboard shows only the most recent 50 logs; the Logs tab fetches up to 500 with a search filter.
-- `system_logs` table still exists and receives entries from successful authorized scans; it is not shown in the UI currently.
-
-## Admin header
-- The user info section (`appHeader__user`) is always rendered but hidden (`visibility: hidden`) until the profile loads. This reserves space and prevents layout shift on mount.
-
-## Push notifications
-- VAPID keys in `.env.local`
-- `POST /api/push/notify` sends to all admin subscribers
-- Triggered by: inspector scan (entry/exit), deficiency report, absence request
-- Notification body for absence: `"{inspector name}, {request type in Hebrew}"`
-- Failed notification calls are swallowed in a try/catch; they never fail the submission
-
-## Inspector profile
-- The profile tab shows the inspector's email (read-only, fetched from `supabase.auth.getUser()` on the client).
-- Inspector can change their own password via a form in the profile tab. Uses `supabase.auth.updateUser({ password })`. No current password required; the active session proves identity. Validates: length >= 6, confirm match.
-- Inspector cannot change their own email. Admin must do it via the key icon credentials modal in the Inspectors tab.
-
-## Admin inspector email visibility
-- Admin Inspectors tab shows an email column fetched from `GET /api/admin/users`, which calls `service.auth.admin.listUsers()`.
-- Email is also shown in the inspector detail modal.
-- Email lives only in Supabase Auth, not in `profiles`.
-
-## Replacement inspector selection
-- Inspector side: when absence type is "החלפה" and a location is selected, the form calls `GET /api/inspector/replacements?location_id=X`.
-  - The route verifies the requesting inspector is assigned to the location, then returns all other inspectors also assigned there.
-  - If no replacements are available: shows "אין משגיחים זמינים למיקום זה". Form can still be submitted without a replacement.
-  - `replacement_inspector_id` is included in the POST body to `/api/inspector/absence`.
-- Admin side: the "ממלא מקום" column in AbsencesTab shows an editable `<select>` for `request_type === 'replacement'` rows only.
-  - Shows inspectors assigned to the same location first (in an optgroup), then all others.
-  - On change: updates `absence_requests.replacement_inspector_id` directly via the admin Supabase client.
-  - For non-replacement types, shows a static read-only display.
-
-## Check-in state indicator
-- Inspector home location cards show a "בפנים" (green) or "בחוץ" (muted) badge based on the most recent VisitLog action_type.
-- Derived from `visitMap` already built in `loadAll()`. No additional data fetch needed.
-- "בפנים" = last action was `entry`. "בחוץ" = last action was `exit`, or no visit history.
-
-## QA credential safety rules
-- Do not change real admin or user passwords during QA unless explicitly approved by the user first.
-- Do not paste live passwords or temporary test passwords into chat reports or documentation. Report only that a password was changed, not the value.
-- Prefer purpose-built test accounts for browser QA instead of real admin accounts.
-- If a password must be changed for testing, restore it immediately after the test and confirm restoration.
-- Admin password changes require explicit user approval each time, even in a QA context. Prior approval for one QA run does not carry over.
+`/api/admin/location-report-attachments` enforces:
+- 20 MB max file size (checked server-side before `arrayBuffer()`)
+- MIME type allowlist: `image/jpeg`, `image/png`, `image/gif`, `image/webp`, `application/pdf`, `.doc`, `.docx`, `.xls`, `.xlsx`
+- Extension derived from the allowlist map (not from `file.name`) to prevent extension spoofing
+- Images are re-encoded via `sharp` (resize + JPEG conversion) — unrecognized image bytes throw a 400
+- DELETE scoped to `admin_id` — admins can only delete their own attachments
+- Report DELETE purges storage files before removing the DB row
 
 ## Admin panel performance architecture
 
-These patterns were introduced in the Perf Patch (2026-05-26) and must be preserved in future work.
-
 ### Lazy tab mounting
-Tabs in `AdminShell` use a `mountedTabs: Set<Tab>` pattern. A tab mounts only on first visit; after that it stays in the DOM hidden with `display: none`. Do not unmount tabs on tab switch; do not reset `mountedTabs` on refresh.
-
 ```tsx
 {mountedTabs.has('dashboard') && (
   <div style={{ display: tab === 'dashboard' ? undefined : 'none' }}>
@@ -223,23 +159,125 @@ Tabs in `AdminShell` use a `mountedTabs: Set<Tab>` pattern. A tab mounts only on
   </div>
 )}
 ```
+A tab mounts on first visit and stays in DOM hidden. Never unmount on tab switch; never reset `mountedTabs` on refresh.
 
 ### Shared lookup data at AdminShell level
-`AdminShell` fetches `profiles`, `locations`, `inspector_locations`, and `/api/admin/users` once in `loadShared()` and passes them as props. Do not re-fetch these in child tabs. Exported types live in `AdminShell.tsx`: `SharedInspector`, `SharedLocation`, `SharedIL`.
-
-`loadShared()` runs on mount (in parallel with auth check) and on every refresh button press. It does NOT run on tab switch.
+`AdminShell` fetches `profiles`, `locations`, `inspector_locations`, and `/api/admin/users` once in `loadShared()` and passes as props. Do not re-fetch in child tabs. Types: `SharedInspector`, `SharedLocation`, `SharedIL` (exported from `AdminShell.tsx`).
 
 ### refreshKey as shared effect dependency
-Each tab uses `useEffect(() => { loadAll() }, [refreshKey])`. On mount `refreshKey === 0` and date filters are already initialized to `DEFAULT_FROM`, so no double-load. On refresh, `refreshKey` increments and the tab re-fetches with the current filter state.
+Each tab uses `useEffect(() => { loadAll() }, [refreshKey])`. On mount `refreshKey === 0`. On refresh button, `refreshKey` increments and tabs re-fetch.
 
-### LocationsTab edit pattern
-`LocationsTab` list query selects only display columns. When the admin clicks edit, `openForEdit()` fetches the full record (`select('*')`) for the single location before opening the modal. This keeps the list query narrow while giving the edit form complete data.
+### DashboardTab auto-refresh
+30-second interval calls `loadAll()` only when `!document.hidden` to avoid wasted requests when browser tab is in background.
 
-### LocationDetailModal form key trick
-`LocationDetailModal` fetches the full location record in its own `loadAll()` as a 6th parallel query. Forms that use `defaultValue` must have `key={location.updated_at ?? 'loading'}` so React re-mounts them when async data arrives.
+## Responsive CSS classes
+
+Defined in `app/globals.css`:
+- `.filtersGrid` — 2-col → 3-col → 5-col at breakpoints
+- `.statsGrid` — 2-col → 4-col at ≥640px
+- `.summaryGrid` — 2-col → 1-col at ≤600px (dashboard bottom tables)
+- `.fieldRow` / `.fieldRow3` — 2/3-col → 1-col at ≤420px (modal form rows)
+- `.infoGrid` — 2-col → 1-col at ≤480px (detail modal info sections)
+- `.button--icon` — `padding: 10px` at ≤640px for mobile touch targets
+- Modals: bottom-sheet style at ≤480px (`align-items: flex-end`, no padding, top-rounded corners)
+
+## Inspector profile: history section
+
+The profile tab includes `InspectorHistory` (defined in `app/inspector/page.tsx`) — a collapsible section fetching the inspector's own `absence_requests` and `deficiency_reports` via the Supabase client directly (RLS scopes to `inspector_id = user.id`).
+
+## Absence request lifecycle
+
+- `admin_status`: `pending` (default), `approved`, `denied`
+- `admin_notes`: free text reason/comment
+- Admin manages in the Absences tab (inline status dropdown + notes save button)
+- Inspector submits via `/api/inspector/absence` which triggers a push notification
+- `request_type` must be one of: `vacation`, `absence`, `replacement`, `other`
+
+## Admin reports (location visit reports)
+
+Admin-authored reports per location with text body, attached files, and follow-up action items. Stored in `admin_location_reports`, `admin_report_attachments`, `admin_report_followups`. PATCH/DELETE on reports is scoped to `admin_id` — admins can only modify their own reports. All delete confirmation dialogs use `<Modal>` components (not `window.confirm` — broken in iOS PWA).
+
+## Admin tab names (for reference)
+
+The "לוגי ביקורים" tab (id: `reports`) shows `visit_logs` scan history — not deficiency reports. The deficiency reports tab is "ליקויי כשרות" (id: `deficiencies`). This naming is intentional.
+
+## Location create/edit: field scope
+
+`LocationForm` (in `LocationsTab.tsx`) handles: name, city, address, QR code, GPS coords, status, contact fields, kashrus_procedure. Fields requiring a record ID stay in `LocationDetailModal` only: `kashrus_certificate_url` (file upload), inspector assignment.
+
+## Storage buckets
+
+- `contracts` — private; signed URLs via `/api/admin/contract-url` or `/api/inspector/contract-url`
+- `certificates` — public; kosher certificates for locations
+- `kashrus-procedures` — private
+- `admin-reports` — private; signed URLs per attachment (1-hour expiry)
+
+## Contract URL handling
+
+`profiles.contract_url` stores the raw storage path (`contracts/<id>/file.pdf`), not a public URL. Both admin and inspector contract routes call `createSignedUrl` on the private bucket. Do NOT call `getPublicUrl` on `contracts` — it is private and will 403.
+
+## Admin password reset
+
+The key icon in the Inspectors tab opens a credentials modal for email/password reset via `PATCH /api/admin/users`. The pencil icon only updates name, start date, vacation days. Credentials and profile are deliberately separated.
+
+## QR code display
+
+QR icon button in Locations tab opens a modal with `QRCodeSVG` from `qrcode.react`. Download uses offscreen `QRCodeCanvas` at 600px then `canvas.toDataURL`. Inspector scan accepts camera scan or manual text entry.
+
+## Inactive locations on inspector home
+
+Inactive locations render at 55% opacity with `cursor: default` and no click handler — no scan button, no check-in badge, only the "לא פעיל" badge.
+
+## Check-in state indicator
+
+Inspector home location cards show "בפנים" (entry) or "בחוץ" (exit / no history) derived from the `visitMap` built in `loadAll()`. No additional fetch needed.
+
+## GPS alert lifecycle
+
+Dashboard alerts appear when inspector scans from >100m. Individual dismiss ("סמן כנקרא") or bulk dismiss. `gps_alerts` joins `visit_logs` to expose `device_lat`/`device_lng` for a Google Maps link in the alerts table. Only `read` flag changes; rows are permanent.
+
+## Replacement inspector selection
+
+Inspector side: `/api/inspector/replacements?location_id=X` returns only inspectors also assigned to that location. Admin side: dropdown in AbsencesTab shows assigned inspectors first (optgroup), then all others.
+
+## Checklist grouping in LocationDetailModal
+
+"בדיקות" tab groups `visit_checks` by `visit_log_id`, rendered as cards with date + inspector header. Fetch limit: 100 rows.
+
+## Deficiency admin notes
+
+`DeficienciesTab` and `LocationDetailModal` use controlled input state for `admin_notes`. A "שמור" button appears only when value differs from stored value (dirty check). No `onBlur`-based save.
+
+## Logs tab (SystemLogsTab)
+
+Shows `visit_logs` (up to 500 with search filter). Note: `system_logs` table also exists and receives entries from successful scans but is not exposed in any UI tab.
+
+## Admin header
+
+`appHeader__user` is always rendered but `visibility: hidden` until profile loads — reserves space and prevents layout shift.
+
+## LocationsTab edit pattern
+
+List query selects display columns only. Clicking edit calls `openForEdit()` which fetches `select('*')` for the single location before opening the modal.
+
+## LocationDetailModal form key trick
+
+Forms using `defaultValue` must have `key={location.updated_at ?? 'loading'}` so React re-mounts them when async data arrives.
+
+## QA credential safety rules
+
+- Do not change real admin or user passwords during QA unless explicitly approved by the user first.
+- Do not paste live passwords or temporary test passwords into chat reports or documentation.
+- Never `await createServiceClient()`: it is synchronous.
+- Never use the em dash character (Unicode U+2014) in any UI copy, error messages, buttons, tooltips, labels, modal titles, push notification bodies, comments, or documentation.
 
 ## Known lint patterns (future cleanup)
-13+ files use `useEffect(() => { loadFn() }, [])` with an async inner function that calls `setState`. This triggers `react-hooks/exhaustive-deps` warnings. The pattern is intentional (load-once on mount). Fixing all instances requires systematic `useCallback` or `.then()` refactoring across the codebase. Deferred to a dedicated future cleanup phase. Do not fix as part of feature work unless the file is already being substantially rewritten.
+
+13+ files use `useEffect(() => { loadFn() }, [])` with async inner functions triggering `react-hooks/exhaustive-deps` warnings. The pattern is intentional (load-once on mount). Deferred to a dedicated cleanup phase.
 
 ## Known issues (pending future phases)
-- `kashrus_procedure_file_url` field exists in schema but is not wired anywhere in UI
+
+- `kashrus_procedure_file_url` field exists in schema but is not wired in any UI
+- `system_logs` table receives scan entries but has no admin UI view
+- PWA icons (`/icon-192.png`, `/icon-512.png`) referenced in manifest.json but not present — push notification icons will show broken image; only `favicon.png` exists
+- Vacation days balance (`vacation_days_remaining`) is not auto-deducted when admin approves a vacation request
