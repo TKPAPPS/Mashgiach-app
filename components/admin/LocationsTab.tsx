@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useRef, FormEvent } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Plus, Pen, Trash2, QrCode, MapPin, Eye } from 'lucide-react'
+import { Plus, Pen, Trash2, QrCode, MapPin, Eye, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import { genQrCode } from '@/lib/utils/format'
@@ -89,6 +89,32 @@ export default function LocationsTab({ refreshKey }: Props) {
   const [qrLoc, setQrLoc] = useState<Location | null>(null)
   const qrCanvasRef = useRef<HTMLCanvasElement>(null)
   const [saving, setSaving] = useState(false)
+  const [sortKey, setSortKey] = useState<'name' | 'city' | 'address' | 'qr_code' | 'gps' | 'status'>('name')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+
+  function handleSort(key: typeof sortKey) {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(key); setSortDir('asc') }
+  }
+
+  function SortIcon({ col }: { col: typeof sortKey }) {
+    if (sortKey !== col) return <ArrowUpDown size={11} style={{ opacity: .3, flexShrink: 0 }} />
+    return sortDir === 'asc' ? <ArrowUp size={11} style={{ flexShrink: 0 }} /> : <ArrowDown size={11} style={{ flexShrink: 0 }} />
+  }
+
+  const sorted = [...locations].sort((a, b) => {
+    let va: string, vb: string
+    switch (sortKey) {
+      case 'name':    va = a.name ?? '';    vb = b.name ?? '';    break
+      case 'city':    va = a.city ?? '';    vb = b.city ?? '';    break
+      case 'address': va = a.address ?? ''; vb = b.address ?? ''; break
+      case 'qr_code': va = a.qr_code ?? ''; vb = b.qr_code ?? ''; break
+      case 'gps':     va = a.lat != null ? '1' : '0'; vb = b.lat != null ? '1' : '0'; break
+      case 'status':  va = a.status ?? ''; vb = b.status ?? ''; break
+    }
+    const cmp = va.localeCompare(vb, 'he')
+    return sortDir === 'asc' ? cmp : -cmp
+  })
 
   useEffect(() => { load() }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -172,10 +198,27 @@ export default function LocationsTab({ refreshKey }: Props) {
           <div className="tableWrap">
             <table>
               <thead>
-                <tr><th>שם המקום</th><th>עיר</th><th>כתובת</th><th>קוד QR</th><th>GPS</th><th>סטטוס</th><th></th></tr>
+                <tr>
+                  {([
+                    ['name',    'שם המקום'],
+                    ['city',    'עיר'],
+                    ['address', 'כתובת'],
+                    ['qr_code', 'קוד QR'],
+                    ['gps',     'GPS'],
+                    ['status',  'סטטוס'],
+                  ] as [typeof sortKey, string][]).map(([col, label]) => (
+                    <th key={col} onClick={() => handleSort(col)}
+                      style={{ cursor: 'pointer', userSelect: 'none' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        {label}<SortIcon col={col} />
+                      </span>
+                    </th>
+                  ))}
+                  <th></th>
+                </tr>
               </thead>
               <tbody>
-                {locations.map(loc => (
+                {sorted.map(loc => (
                   <tr key={loc.id}>
                     <td>
                       <div className="adminSection__locName">
