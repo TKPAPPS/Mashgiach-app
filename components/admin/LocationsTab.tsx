@@ -198,8 +198,18 @@ export default function LocationsTab({ refreshKey }: Props) {
   async function handleDelete() {
     if (!deleteId) return
     const { error } = await supabase.from('locations').delete().eq('id', deleteId)
-    if (error) { toast('שגיאה במחיקה', 'error') }
-    else { toast('המקום נמחק', 'success'); load() }
+    if (!error) {
+      toast('המקום נמחק', 'success'); load(); setDeleteId(null); return
+    }
+    // 23503 = foreign-key violation: the location has visit history (logs, checks,
+    // reports...). Rather than destroy that audit trail, deactivate it instead.
+    if (error.code === '23503') {
+      const { error: deactErr } = await supabase.from('locations').update({ status: 'inactive' }).eq('id', deleteId)
+      if (deactErr) toast('שגיאה בהשבתת המקום', 'error')
+      else { toast('למקום יש היסטוריית ביקורים, לכן הושבת במקום להימחק', 'success'); load() }
+    } else {
+      toast('שגיאה במחיקה', 'error')
+    }
     setDeleteId(null)
   }
 
@@ -338,7 +348,7 @@ export default function LocationsTab({ refreshKey }: Props) {
           <button className="button button--ghost" onClick={() => setDeleteId(null)}>ביטול</button>
           <button className="button button--danger" onClick={handleDelete}>מחק</button>
         </>}>
-        <p>האם אתה בטוח שברצונך למחוק מקום זה? הפעולה אינה הפיכה.</p>
+        <p>האם אתה בטוח שברצונך למחוק מקום זה? מקום ללא היסטוריה יימחק לצמיתות. מקום שיש לו היסטוריית ביקורים יושבת (יוסתר מהמשגיחים) כדי לשמור על תיעוד הביקורות.</p>
       </Modal>
 
       {/* QR display */}
