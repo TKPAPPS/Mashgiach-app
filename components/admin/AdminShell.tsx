@@ -234,7 +234,7 @@ export default function AdminShell() {
         )}
         {mountedTabs.has('absences') && (
           <div style={{ display: tab === 'absences' ? undefined : 'none' }}>
-            <ErrorBoundary><AbsencesTab refreshKey={refreshKey} inspectors={sharedInspectors} inspectorLocations={sharedIL} /></ErrorBoundary>
+            <ErrorBoundary><AbsencesTab refreshKey={refreshKey} inspectors={sharedInspectors} inspectorLocations={sharedIL} onBalanceChange={loadShared} /></ErrorBoundary>
           </div>
         )}
         {mountedTabs.has('checklist') && (

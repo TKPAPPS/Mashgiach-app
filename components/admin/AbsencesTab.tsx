@@ -32,9 +32,10 @@ type Props = {
   refreshKey: number
   inspectors: SharedInspector[]
   inspectorLocations: SharedIL[]
+  onBalanceChange?: () => void
 }
 
-export default function AbsencesTab({ refreshKey, inspectors, inspectorLocations }: Props) {
+export default function AbsencesTab({ refreshKey, inspectors, inspectorLocations, onBalanceChange }: Props) {
   const supabase = createClient()
   const { toast } = useToast()
   const [requests, setRequests] = useState<AbsenceRequest[]>([])
@@ -64,9 +65,17 @@ export default function AbsencesTab({ refreshKey, inspectors, inspectorLocations
   }
 
   async function updateStatus(id: string, admin_status: AbsenceAdminStatus) {
-    const { error } = await supabase.from('absence_requests').update({ admin_status }).eq('id', id)
-    if (error) { toast('שגיאה בעדכון סטטוס', 'error'); return }
-    setRequests(prev => prev.map(r => r.id === id ? { ...r, admin_status } : r))
+    const res = await fetch('/api/admin/absence-status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, admin_status }),
+    })
+    if (!res.ok) { toast('שגיאה בעדכון סטטוס', 'error'); return }
+    const { days_deducted } = await res.json()
+    setRequests(prev => prev.map(r => r.id === id ? { ...r, admin_status, days_deducted } : r))
+    // A vacation approval/restore changed the inspector balance shown in the
+    // Inspectors tab, so refresh shared lookups.
+    onBalanceChange?.()
   }
 
   async function saveNotes(id: string) {

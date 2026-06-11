@@ -108,6 +108,7 @@ export type AbsenceRequest = {
   notes: string | null
   admin_status: AbsenceAdminStatus
   admin_notes: string | null
+  days_deducted: number
   created_at: string
   inspector?: Pick<Profile, 'id' | 'full_name'>
   location?: Pick<Location, 'id' | 'name'>
@@ -206,7 +207,7 @@ export type Database = {
       checklist_items:     TableDef<ChecklistItem, Omit<ChecklistItem,'id'|'created_at'> & { id?: string }, Partial<ChecklistItem>>
       visit_checks:        TableDef<VisitCheck, Omit<VisitCheck,'id'|'created_at'|'inspector'|'location'|'checklist_item'>, Partial<Omit<VisitCheck,'inspector'|'location'|'checklist_item'>>>
       deficiency_reports:  TableDef<DeficiencyReport, Omit<DeficiencyReport,'id'|'created_at'|'updated_at'|'inspector'|'location'>, Partial<Omit<DeficiencyReport,'inspector'|'location'>>>
-      absence_requests:    TableDef<AbsenceRequest, Omit<AbsenceRequest,'id'|'created_at'|'admin_status'|'admin_notes'|'inspector'|'location'|'replacement_inspector'> & { admin_status?: AbsenceAdminStatus; admin_notes?: string | null }, Partial<Omit<AbsenceRequest,'inspector'|'location'|'replacement_inspector'>>>
+      absence_requests:    TableDef<AbsenceRequest, Omit<AbsenceRequest,'id'|'created_at'|'admin_status'|'admin_notes'|'days_deducted'|'inspector'|'location'|'replacement_inspector'> & { admin_status?: AbsenceAdminStatus; admin_notes?: string | null }, Partial<Omit<AbsenceRequest,'inspector'|'location'|'replacement_inspector'>>>
       system_logs:         TableDef<SystemLog, Omit<SystemLog,'id'|'created_at'|'performer'|'location'>, Partial<Omit<SystemLog,'performer'|'location'>>>
       gps_alerts:          TableDef<GpsAlert, Omit<GpsAlert,'id'|'created_at'|'inspector'|'location'>, Partial<Omit<GpsAlert,'inspector'|'location'>>>
       visit_photos:              TableDef<VisitPhoto, Omit<VisitPhoto,'id'|'created_at'>, Partial<VisitPhoto>>
