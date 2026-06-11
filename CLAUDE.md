@@ -193,6 +193,16 @@ The profile tab includes `InspectorHistory` (defined in `app/inspector/page.tsx`
 - Inspector submits via `/api/inspector/absence` which triggers a push notification
 - `request_type` must be one of: `vacation`, `absence`, `replacement`, `other`
 
+### Vacation balance auto-deduction
+
+The Absences tab status dropdown posts to `/api/admin/absence-status` (admin-gated), which calls the `apply_absence_status(p_id, p_status)` Postgres function. Never update `absence_requests.admin_status` directly from the client when balance reconciliation matters.
+
+- Only `request_type = 'vacation'` with a `start_date` affects `profiles.vacation_days_remaining`. Day count is inclusive: `(coalesce(end_date, start_date) - start_date) + 1`.
+- Approving deducts once and records the amount in `absence_requests.days_deducted`. Moving the request back to `pending`/`denied` restores it. Idempotent: re-approving never double-deducts.
+- Balance is clamped at zero (`greatest(... , 0)`).
+- The function is `security definer`, locks the row with `SELECT ... FOR UPDATE`, and is revoked from `anon`/`authenticated` (callable only via the service-role route).
+- `days_deducted` is omitted from the `absence_requests` Insert type (DB default 0). The RPC is typed locally in the route, not in the `Database` type, because expanding `Database['public']['Functions']` destabilizes Supabase relationship inference.
+
 ## Admin reports (location visit reports)
 
 Admin-authored reports per location with text body, attached files, and follow-up action items. Stored in `admin_location_reports`, `admin_report_attachments`, `admin_report_followups`. PATCH/DELETE on reports is scoped to `admin_id` — admins can only modify their own reports. All delete confirmation dialogs use `<Modal>` components (not `window.confirm` — broken in iOS PWA).
@@ -279,5 +289,4 @@ Forms using `defaultValue` must have `key={location.updated_at ?? 'loading'}` so
 
 - `kashrus_procedure_file_url` field exists in schema but is not wired in any UI
 - `system_logs` table receives scan entries but has no admin UI view
-- PWA icons (`/icon-192.png`, `/icon-512.png`) referenced in manifest.json but not present — push notification icons will show broken image; only `favicon.png` exists
-- Vacation days balance (`vacation_days_remaining`) is not auto-deducted when admin approves a vacation request
+- One latent type error in `app/inspector/page.tsx` (and similar embedded-select casts) stems from the hand-written `Database` type using empty `Relationships: []`. It surfaces or hides depending on overall type complexity. Real fix: add relationship typings or regenerate types.
