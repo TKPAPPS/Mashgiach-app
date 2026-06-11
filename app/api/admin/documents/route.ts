@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/server'
+import { requireAdmin } from '@/lib/supabase/requireAdmin'
 import sharp from 'sharp'
 
 const BUCKET = 'documents'
@@ -15,15 +16,6 @@ const ALLOWED_MIME_TYPES: Record<string, string> = {
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
   'application/vnd.ms-excel': 'xls',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
-}
-
-async function requireAdmin() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-  if (profile?.role !== 'admin') return null
-  return user
 }
 
 export async function GET() {
@@ -120,6 +112,9 @@ export async function DELETE(req: NextRequest) {
   const id = req.nextUrl.searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
+  // Deletion is intentionally NOT scoped to uploaded_by: the documents library is
+  // a shared organizational resource (contracts any admin may need to manage),
+  // unlike admin reports which are per-author. Any admin may remove any document.
   const service = createServiceClient()
   const { data: doc } = await service.from('documents').select('file_path').eq('id', id).single()
   if (!doc) return NextResponse.json({ ok: true })

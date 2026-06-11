@@ -93,11 +93,15 @@ CREATE TABLE visit_logs (
 -- CHECKLIST ITEMS (admin-editable)
 -- -------------------------------------------------------
 CREATE TABLE checklist_items (
-  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  name       text NOT NULL,
-  active     boolean DEFAULT true,
-  sort_order int DEFAULT 0,
-  created_at timestamptz DEFAULT now()
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name        text NOT NULL,
+  active      boolean DEFAULT true,
+  sort_order  int DEFAULT 0,
+  -- NULL location_id = the global default list, used as a fallback for any
+  -- location that has no items of its own.
+  location_id uuid REFERENCES locations(id) ON DELETE CASCADE,
+  frequency   text NOT NULL DEFAULT 'daily' CHECK (frequency IN ('daily','weekly')),
+  created_at  timestamptz DEFAULT now()
 );
 
 -- Default items
@@ -125,6 +129,7 @@ CREATE TABLE visit_checks (
   checklist_item_id  uuid REFERENCES checklist_items(id),
   item_name          text,
   note               text,
+  frequency          text,
   created_at         timestamptz DEFAULT now()
 );
 
@@ -196,6 +201,21 @@ CREATE TABLE push_subscriptions (
 );
 
 -- -------------------------------------------------------
+-- DOCUMENTS (standalone contracts/documents library)
+-- -------------------------------------------------------
+CREATE TABLE documents (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name         text NOT NULL,
+  file_path    text NOT NULL,
+  file_name    text NOT NULL,
+  file_type    text NOT NULL CHECK (file_type IN ('image','document')),
+  location_id  uuid REFERENCES locations(id) ON DELETE SET NULL,
+  inspector_id uuid REFERENCES profiles(id) ON DELETE SET NULL,
+  uploaded_by  uuid REFERENCES profiles(id),
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+
+-- -------------------------------------------------------
 -- ROW LEVEL SECURITY
 -- -------------------------------------------------------
 ALTER TABLE profiles            ENABLE ROW LEVEL SECURITY;
@@ -209,6 +229,8 @@ ALTER TABLE absence_requests    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE system_logs         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE gps_alerts          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE push_subscriptions  ENABLE ROW LEVEL SECURITY;
+-- documents: RLS on with no policies; all access is via the admin service-role route.
+ALTER TABLE documents           ENABLE ROW LEVEL SECURITY;
 
 -- Helper: is current user admin?
 CREATE OR REPLACE FUNCTION is_admin()
@@ -271,3 +293,5 @@ CREATE POLICY "ps_self_all"           ON push_subscriptions FOR ALL TO authentic
 --   "contracts"          (private) - inspector contracts
 --   "certificates"       (private) - kashrus certificates
 --   "kashrus-procedures" (private) - kashrus procedure files
+--   "admin-reports"      (private) - admin location report attachments
+--   "documents"          (private) - standalone documents/contracts library

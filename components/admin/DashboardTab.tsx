@@ -56,7 +56,7 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
         .eq('read', false).order('created_at', { ascending: false }).limit(10),
       supabase.from('visit_checks')
         .select('id,visit_log_id,item_name,note,created_at,inspector:profiles(id,full_name),location:locations(id,name)')
-        .order('created_at', { ascending: false }).limit(150),
+        .order('created_at', { ascending: false }).limit(40),
       supabase.from('visit_logs').select('id', { count: 'estimated', head: true }),
       supabase.from('visit_logs').select('id', { count: 'estimated', head: true }).gte('created_at', monthStart),
       supabase.from('profiles').select('id', { count: 'estimated', head: true }).eq('role', 'mashgiach'),
@@ -91,7 +91,7 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
 
   // Group the most recent completed checks by visit so the dashboard shows what
   // each inspector actually marked done. Cap at the latest 15 visits.
-  const completionGroups = (() => {
+  const completionGroups = useMemo(() => {
     const map = new Map<string, VisitCheck[]>()
     const order: string[] = []
     for (const c of completions) {
@@ -100,7 +100,7 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
       map.get(key)!.push(c)
     }
     return order.slice(0, 15).map(key => map.get(key)!)
-  })()
+  }, [completions])
 
   const byLocation = filtered.filter(l => l.internal_status === 'success').reduce((acc, l) => {
     const key = l.location_id ?? ''

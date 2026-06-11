@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useRef, FormEvent } from 'react'
+import { useState, useEffect, useMemo, FormEvent } from 'react'
 import { Upload, Download, Trash2, FileText, Image as ImageIcon, MapPin, User } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
@@ -30,7 +30,6 @@ export default function DocumentsTab({ refreshKey, locations, inspectors }: Prop
   const [uploadOpen, setUploadOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
-  const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { load() }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -41,8 +40,11 @@ export default function DocumentsTab({ refreshKey, locations, inspectors }: Prop
     setLoading(false)
   }
 
-  const locName = (id: string | null) => locations.find(l => l.id === id)?.name
-  const inspName = (id: string | null) => inspectors.find(i => i.id === id)?.full_name
+  // O(1) id -> name lookups instead of scanning the arrays per row.
+  const locMap = useMemo(() => new Map(locations.map(l => [l.id, l.name])), [locations])
+  const inspMap = useMemo(() => new Map(inspectors.map(i => [i.id, i.full_name])), [inspectors])
+  const locName = (id: string | null) => (id ? locMap.get(id) : undefined)
+  const inspName = (id: string | null) => (id ? inspMap.get(id) : undefined)
 
   async function handleUpload(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -139,7 +141,7 @@ export default function DocumentsTab({ refreshKey, locations, inspectors }: Prop
               <input name="name" placeholder="לדוגמה: חוזה כשרות 2026" />
             </label>
             <label className="field"><span>קובץ *</span>
-              <input ref={fileRef} name="file" type="file" required
+              <input name="file" type="file" required
                 accept=".pdf,.doc,.docx,.xls,.xlsx,image/jpeg,image/png,image/gif,image/webp" />
             </label>
             <p style={{ fontSize: '.78rem', color: 'var(--muted)', margin: 0 }}>שייך לעיר/מקום או למשגיח (אופציונלי)</p>

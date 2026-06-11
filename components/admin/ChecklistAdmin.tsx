@@ -129,7 +129,9 @@ export default function ChecklistAdmin({ refreshKey, locations }: Props) {
             {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
         </label>
-        {selectedLoc && (
+        {/* Only offer seeding when the location has no items, so the defaults can
+            never be copied twice and create duplicates. */}
+        {selectedLoc && !loading && items.length === 0 && (
           <button className="button button--ghost button--sm" disabled={copying} onClick={copyDefaults}>
             <Copy size={14} /> העתק רשימת ברירת מחדל
           </button>

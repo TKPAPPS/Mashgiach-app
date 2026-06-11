@@ -160,7 +160,9 @@ export default function LocationsTab({ refreshKey }: Props) {
     const fd = new FormData(e.currentTarget)
     const basePayload = {
       name:               fd.get('name') as string,
-      city:               (fd.get('city') as string) || null,
+      // Trim city so values stay consistent (the city manager groups/matches on
+      // exact text; stray whitespace would orphan a city from rename/delete).
+      city:               ((fd.get('city') as string) || '').trim() || null,
       address:            (fd.get('address') as string) || null,
       qr_code:            fd.get('qr_code') as string,
       lat:                fd.get('lat') ? Number(fd.get('lat')) : null,
