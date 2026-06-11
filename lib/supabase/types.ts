@@ -59,11 +59,15 @@ export type VisitLog = {
   location?: Pick<Location, 'id' | 'name' | 'city'>
 }
 
+export type ChecklistFrequency = 'daily' | 'weekly'
+
 export type ChecklistItem = {
   id: string
   name: string
   active: boolean
   sort_order: number
+  location_id: string | null
+  frequency: ChecklistFrequency
   created_at: string
 }
 
@@ -75,6 +79,7 @@ export type VisitCheck = {
   checklist_item_id: string | null
   item_name: string | null
   note: string | null
+  frequency: ChecklistFrequency | null
   created_at: string
   inspector?: Pick<Profile, 'id' | 'full_name'>
   location?: Pick<Location, 'id' | 'name' | 'city'>
@@ -176,6 +181,18 @@ export type AdminReportFollowup = {
   created_at: string
 }
 
+export type Document = {
+  id: string
+  name: string
+  file_path: string
+  file_name: string
+  file_type: 'image' | 'document'
+  location_id: string | null
+  inspector_id: string | null
+  uploaded_by: string | null
+  created_at: string
+}
+
 export type GpsAlert = {
   id: string
   visit_log_id: string | null
@@ -204,8 +221,8 @@ export type Database = {
       locations:           TableDef<Location, Omit<Location,'id'|'created_at'|'updated_at'> & { id?: string }, Partial<Location>>
       inspector_locations: TableDef<InspectorLocation, Omit<InspectorLocation,'id'|'created_at'>, Partial<InspectorLocation>>
       visit_logs:          TableDef<VisitLog, Omit<VisitLog,'id'|'created_at'|'inspector'|'location'>, Partial<Omit<VisitLog,'inspector'|'location'>>>
-      checklist_items:     TableDef<ChecklistItem, Omit<ChecklistItem,'id'|'created_at'> & { id?: string }, Partial<ChecklistItem>>
-      visit_checks:        TableDef<VisitCheck, Omit<VisitCheck,'id'|'created_at'|'inspector'|'location'|'checklist_item'>, Partial<Omit<VisitCheck,'inspector'|'location'|'checklist_item'>>>
+      checklist_items:     TableDef<ChecklistItem, Omit<ChecklistItem,'id'|'created_at'|'location_id'|'frequency'> & { id?: string; location_id?: string | null; frequency?: ChecklistFrequency }, Partial<ChecklistItem>>
+      visit_checks:        TableDef<VisitCheck, Omit<VisitCheck,'id'|'created_at'|'frequency'|'inspector'|'location'|'checklist_item'> & { frequency?: ChecklistFrequency | null }, Partial<Omit<VisitCheck,'inspector'|'location'|'checklist_item'>>>
       deficiency_reports:  TableDef<DeficiencyReport, Omit<DeficiencyReport,'id'|'created_at'|'updated_at'|'inspector'|'location'>, Partial<Omit<DeficiencyReport,'inspector'|'location'>>>
       absence_requests:    TableDef<AbsenceRequest, Omit<AbsenceRequest,'id'|'created_at'|'admin_status'|'admin_notes'|'days_deducted'|'inspector'|'location'|'replacement_inspector'> & { admin_status?: AbsenceAdminStatus; admin_notes?: string | null }, Partial<Omit<AbsenceRequest,'inspector'|'location'|'replacement_inspector'>>>
       system_logs:         TableDef<SystemLog, Omit<SystemLog,'id'|'created_at'|'performer'|'location'>, Partial<Omit<SystemLog,'performer'|'location'>>>
@@ -216,6 +233,7 @@ export type Database = {
       admin_report_attachments:  TableDef<AdminReportAttachment, Omit<AdminReportAttachment,'id'|'created_at'>, Partial<AdminReportAttachment>>
       admin_report_followups:    TableDef<AdminReportFollowup, Omit<AdminReportFollowup,'id'|'created_at'>, Partial<AdminReportFollowup>>
       push_subscriptions:        TableDef<{ id: string; user_id: string; endpoint: string; p256dh: string; auth: string; created_at: string }, { user_id: string; endpoint: string; p256dh: string; auth: string }, { user_id?: string; endpoint?: string; p256dh?: string; auth?: string }>
+      documents:                 TableDef<Document, Omit<Document,'id'|'created_at'>, Partial<Document>>
     }
     Views: Record<string, never>
     Functions: Record<string, never>

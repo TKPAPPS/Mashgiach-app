@@ -60,13 +60,14 @@ export async function POST(req: NextRequest) {
 
   // Insert only if there are checked items (empty submission is valid)
   if (checks.length > 0) {
-    const rows = checks.map((c: { checklist_item_id?: string; item_name?: string; note?: string }) => ({
+    const rows = checks.map((c: { checklist_item_id?: string; item_name?: string; note?: string; frequency?: string }) => ({
       visit_log_id,
       inspector_id: user.id,
       location_id,
       checklist_item_id: c.checklist_item_id ?? null,
       item_name: c.item_name ?? null,
       note: c.note ?? null,
+      frequency: (c.frequency === 'weekly' ? 'weekly' : c.frequency === 'daily' ? 'daily' : null) as 'weekly' | 'daily' | null,
     }))
     const { error } = await service.from('visit_checks').insert(rows)
     if (error) return NextResponse.json({ error: 'שגיאה בשמירת הבדיקות' }, { status: 500 })

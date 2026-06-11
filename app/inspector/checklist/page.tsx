@@ -95,16 +95,26 @@ function ChecklistInner() {
   useEffect(() => {
     if (!hasParams) return
     let cancelled = false
-    supabase
-      .from('checklist_items')
-      .select('*')
-      .eq('active', true)
-      .order('sort_order')
-      .then(({ data }) => {
-        if (cancelled) return
-        setItems((data ?? []) as ChecklistItem[])
-        setPhase('form')
-      })
+    ;(async () => {
+      // Per-location list if this location has its own items; otherwise fall back
+      // to the global default list (location_id IS NULL). Keeps behavior unchanged
+      // for any location an admin has not customized yet.
+      const { data: locItems } = await supabase
+        .from('checklist_items').select('*')
+        .eq('active', true).eq('location_id', locationId)
+        .order('sort_order')
+      let result = (locItems ?? []) as ChecklistItem[]
+      if (result.length === 0) {
+        const { data: globals } = await supabase
+          .from('checklist_items').select('*')
+          .eq('active', true).is('location_id', null)
+          .order('sort_order')
+        result = (globals ?? []) as ChecklistItem[]
+      }
+      if (cancelled) return
+      setItems(result)
+      setPhase('form')
+    })()
     return () => { cancelled = true }
   // hasParams is derived from URL params (stable after mount); supabase ref is stable
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -123,6 +133,46 @@ function ChecklistInner() {
     setNotes(prev => ({ ...prev, [id]: value }))
   }
 
+  const dailyItems = items.filter(i => i.frequency !== 'weekly')
+  const weeklyItems = items.filter(i => i.frequency === 'weekly')
+
+  function renderItem(item: ChecklistItem) {
+    const isChecked = checked.has(item.id)
+    return (
+      <div key={item.id} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div
+          className={`checkItem${isChecked ? ' checkItem--checked' : ''}`}
+          onClick={() => toggleCheck(item.id)}
+          style={{ cursor: 'pointer' }}
+        >
+          <input
+            type="checkbox"
+            checked={isChecked}
+            onChange={() => toggleCheck(item.id)}
+            onClick={e => e.stopPropagation()}
+          />
+          <span className="checkItem__label">{item.name}</span>
+        </div>
+        {isChecked && (
+          <input
+            type="text"
+            placeholder="הערה (אופציונלי)"
+            value={notes[item.id] ?? ''}
+            onChange={e => setNote(item.id, e.target.value)}
+            style={{
+              marginRight: 26,
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius)',
+              padding: '5px 10px',
+              fontSize: '.82rem',
+              background: '#fff',
+            }}
+          />
+        )}
+      </div>
+    )
+  }
+
   async function submit() {
     setSubmitting(true)
     const checks = items
@@ -131,6 +181,7 @@ function ChecklistInner() {
         checklist_item_id: item.id,
         item_name: item.name,
         note: notes[item.id]?.trim() || null,
+        frequency: item.frequency,
       }))
 
     const res = await fetch('/api/inspector/exit-form', {
@@ -262,44 +313,22 @@ function ChecklistInner() {
               <div className="card__title">בדוק את הסעיפים שבוצעו</div>
             </div>
             <div className="card__body">
-              <div className="checklistWrap">
-                {items.map(item => {
-                  const isChecked = checked.has(item.id)
-                  return (
-                    <div key={item.id} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      <div
-                        className={`checkItem${isChecked ? ' checkItem--checked' : ''}`}
-                        onClick={() => toggleCheck(item.id)}
-                        style={{ cursor: 'pointer' }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => toggleCheck(item.id)}
-                          onClick={e => e.stopPropagation()}
-                        />
-                        <span className="checkItem__label">{item.name}</span>
-                      </div>
-                      {isChecked && (
-                        <input
-                          type="text"
-                          placeholder="הערה (אופציונלי)"
-                          value={notes[item.id] ?? ''}
-                          onChange={e => setNote(item.id, e.target.value)}
-                          style={{
-                            marginRight: 26,
-                            border: '1px solid var(--border)',
-                            borderRadius: 'var(--radius)',
-                            padding: '5px 10px',
-                            fontSize: '.82rem',
-                            background: '#fff',
-                          }}
-                        />
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
+              {dailyItems.length > 0 && (
+                <>
+                  <div style={{ fontSize: '.82rem', fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>בדיקות יומיות</div>
+                  <div className="checklistWrap">
+                    {dailyItems.map(renderItem)}
+                  </div>
+                </>
+              )}
+              {weeklyItems.length > 0 && (
+                <>
+                  <div style={{ fontSize: '.82rem', fontWeight: 700, color: 'var(--muted)', margin: `${dailyItems.length > 0 ? 16 : 0}px 0 8px` }}>בדיקות שבועיות</div>
+                  <div className="checklistWrap">
+                    {weeklyItems.map(renderItem)}
+                  </div>
+                </>
+              )}
               <p style={{ marginTop: 12, fontSize: '.78rem', color: 'var(--muted)' }}>
                 {checked.size} מתוך {items.length} פריטים סומנו
               </p>

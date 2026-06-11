@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useRef, FormEvent } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Plus, Pen, Trash2, QrCode, MapPin, Eye, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
+import { Plus, Pen, Trash2, QrCode, MapPin, Eye, ArrowUp, ArrowDown, ArrowUpDown, Search } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import { genQrCode } from '@/lib/utils/format'
@@ -91,6 +91,8 @@ export default function LocationsTab({ refreshKey }: Props) {
   const [saving, setSaving] = useState(false)
   const [sortKey, setSortKey] = useState<'name' | 'city' | 'address' | 'qr_code' | 'gps' | 'status'>('name')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [citySearch, setCitySearch] = useState('')
+  const [groupByCity, setGroupByCity] = useState(true)
 
   function handleSort(key: typeof sortKey) {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -115,6 +117,27 @@ export default function LocationsTab({ refreshKey }: Props) {
     const cmp = va.localeCompare(vb, 'he')
     return sortDir === 'asc' ? cmp : -cmp
   })
+
+  const filtered = sorted.filter(l =>
+    !citySearch.trim() || (l.city ?? '').toLowerCase().includes(citySearch.trim().toLowerCase())
+  )
+
+  // Group filtered locations by city. Null/blank city sorts last under "ללא עיר".
+  const cityGroups: { key: string; label: string; items: Location[] }[] = (() => {
+    if (!groupByCity) return [{ key: '', label: '', items: filtered }]
+    const map = new Map<string, Location[]>()
+    for (const l of filtered) {
+      const key = l.city?.trim() || ''
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(l)
+    }
+    const keys = [...map.keys()].sort((a, b) => {
+      if (a === '') return 1
+      if (b === '') return -1
+      return a.localeCompare(b, 'he')
+    })
+    return keys.map(k => ({ key: k, label: k || 'ללא עיר', items: map.get(k)! }))
+  })()
 
   useEffect(() => { load() }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -192,9 +215,27 @@ export default function LocationsTab({ refreshKey }: Props) {
             <Plus size={15} /> מקום חדש
           </button>
         </div>
+        {locations.length > 0 && (
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '0 14px 10px' }}>
+            <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: 280 }}>
+              <Search size={14} style={{ position: 'absolute', insetInlineStart: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', pointerEvents: 'none' }} aria-hidden />
+              <input
+                value={citySearch}
+                onChange={e => setCitySearch(e.target.value)}
+                placeholder="חיפוש לפי עיר..."
+                style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '7px 10px 7px 30px', fontSize: '.85rem' }}
+              />
+            </div>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '.82rem', color: 'var(--muted)', cursor: 'pointer', userSelect: 'none' }}>
+              <input type="checkbox" checked={groupByCity} onChange={e => setGroupByCity(e.target.checked)} />
+              קבץ לפי עיר
+            </label>
+          </div>
+        )}
         <div style={{ padding: '0 0 4px' }}>
           {loading ? <div className="emptyState"><span className="spinner" /></div> :
           locations.length === 0 ? <div className="emptyState">אין מקומות.</div> :
+          filtered.length === 0 ? <div className="emptyState">לא נמצאו מקומות לעיר זו.</div> :
           <div className="tableWrap">
             <table>
               <thead>
@@ -217,42 +258,51 @@ export default function LocationsTab({ refreshKey }: Props) {
                   <th></th>
                 </tr>
               </thead>
-              <tbody>
-                {sorted.map(loc => (
-                  <tr key={loc.id}>
-                    <td>
-                      <div className="adminSection__locName">
-                        <MapPin size={14} style={{ color: 'var(--primary)', flexShrink: 0 }} aria-hidden />
-                        {loc.name}
-                      </div>
-                    </td>
-                    <td>{loc.city ?? <span className="mutedCell">-</span>}</td>
-                    <td>{loc.address ?? <span className="mutedCell">-</span>}</td>
-                    <td><code className="qrCodeText">{loc.qr_code}</code></td>
-                    <td>
-                      {loc.lat && loc.lng
-                        ? <span className="badge badge--success" style={{ fontSize: '.7rem' }}>✓</span>
-                        : <span className="badge badge--muted" style={{ fontSize: '.7rem' }}>לא מוגדר</span>}
-                    </td>
-                    <td>
-                      <button className={`badge ${loc.status === 'active' ? 'badge--success' : 'badge--muted'}`}
-                        style={{ cursor: 'pointer', border: 'none' }}
-                        onClick={() => toggleStatus(loc)}>
-                        {loc.status === 'active' ? 'פעיל' : 'לא פעיל'}
-                      </button>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
-                        <button className="button button--icon button--ghost" title="פרטים מלאים" onClick={() => setDetailLoc(loc)}><Eye size={15} /></button>
-                        <button className="button button--icon button--ghost" title="הצג QR" onClick={() => setQrLoc(loc)}><QrCode size={15} /></button>
-                        <button className="button button--icon button--ghost" title="עריכה" onClick={() => openForEdit(loc)}><Pen size={15} /></button>
-                        <button className="button button--icon button--ghost" title="מחיקה"
-                          style={{ color: 'var(--danger)' }} onClick={() => setDeleteId(loc.id)}><Trash2 size={15} /></button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
+              {cityGroups.map(group => (
+                <tbody key={group.key || '__all__'}>
+                  {groupByCity && (
+                    <tr>
+                      <th colSpan={7} style={{ textAlign: 'start', background: 'var(--bg-muted, #f5f5f5)', fontSize: '.8rem', fontWeight: 700, padding: '6px 12px' }}>
+                        {group.label} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>({group.items.length})</span>
+                      </th>
+                    </tr>
+                  )}
+                  {group.items.map(loc => (
+                    <tr key={loc.id}>
+                      <td>
+                        <div className="adminSection__locName">
+                          <MapPin size={14} style={{ color: 'var(--primary)', flexShrink: 0 }} aria-hidden />
+                          {loc.name}
+                        </div>
+                      </td>
+                      <td>{loc.city ?? <span className="mutedCell">-</span>}</td>
+                      <td>{loc.address ?? <span className="mutedCell">-</span>}</td>
+                      <td><code className="qrCodeText">{loc.qr_code}</code></td>
+                      <td>
+                        {loc.lat && loc.lng
+                          ? <span className="badge badge--success" style={{ fontSize: '.7rem' }}>✓</span>
+                          : <span className="badge badge--muted" style={{ fontSize: '.7rem' }}>לא מוגדר</span>}
+                      </td>
+                      <td>
+                        <button className={`badge ${loc.status === 'active' ? 'badge--success' : 'badge--muted'}`}
+                          style={{ cursor: 'pointer', border: 'none' }}
+                          onClick={() => toggleStatus(loc)}>
+                          {loc.status === 'active' ? 'פעיל' : 'לא פעיל'}
+                        </button>
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                          <button className="button button--icon button--ghost" title="פרטים מלאים" onClick={() => setDetailLoc(loc)}><Eye size={15} /></button>
+                          <button className="button button--icon button--ghost" title="הצג QR" onClick={() => setQrLoc(loc)}><QrCode size={15} /></button>
+                          <button className="button button--icon button--ghost" title="עריכה" onClick={() => openForEdit(loc)}><Pen size={15} /></button>
+                          <button className="button button--icon button--ghost" title="מחיקה"
+                            style={{ color: 'var(--danger)' }} onClick={() => setDeleteId(loc.id)}><Trash2 size={15} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              ))}
             </table>
           </div>}
         </div>

@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import {
   RefreshCw, LogOut, Bell, BellOff,
   CalendarDays, MapPin, Users, FileText,
-  AlertTriangle, CheckSquare, ScrollText, ShieldCheck, ClipboardList
+  AlertTriangle, CheckSquare, ScrollText, ShieldCheck, ClipboardList, Files
 } from 'lucide-react'
 import Image from 'next/image'
 import type { Profile } from '@/lib/supabase/types'
@@ -20,13 +20,14 @@ import AbsencesTab     from './AbsencesTab'
 import SystemLogsTab   from './SystemLogsTab'
 import AdminsTab       from './AdminsTab'
 import AdminReportTab  from './AdminReportTab'
+import DocumentsTab    from './DocumentsTab'
 import { ErrorBoundary } from './ErrorBoundary'
 
 export type SharedInspector = { id: string; full_name: string }
 export type SharedLocation   = { id: string; name: string; city: string | null; status: string }
 export type SharedIL         = { inspector_id: string; location_id: string }
 
-type Tab = 'dashboard' | 'locations' | 'inspectors' | 'reports' | 'deficiencies' | 'checklist' | 'absences' | 'logs' | 'admins' | 'adminreports'
+type Tab = 'dashboard' | 'locations' | 'inspectors' | 'reports' | 'deficiencies' | 'checklist' | 'absences' | 'logs' | 'admins' | 'adminreports' | 'documents'
 
 const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
   { id: 'dashboard',    label: 'דשבורד',        Icon: CalendarDays },
@@ -36,6 +37,7 @@ const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
   { id: 'deficiencies', label: 'ליקויי כשרות',   Icon: AlertTriangle },
   { id: 'absences',     label: 'היעדרויות',      Icon: CalendarDays },
   { id: 'checklist',    label: 'רשימת בדיקות',   Icon: CheckSquare },
+  { id: 'documents',    label: 'מסמכים',         Icon: Files },
   { id: 'logs',         label: 'לוגים',          Icon: ScrollText },
   { id: 'admins',       label: 'מנהלים',         Icon: ShieldCheck },
   { id: 'adminreports', label: 'דוח מנהל',       Icon: ClipboardList },
@@ -209,7 +211,7 @@ export default function AdminShell() {
 
         {mountedTabs.has('dashboard') && (
           <div style={{ display: tab === 'dashboard' ? undefined : 'none' }}>
-            <ErrorBoundary><DashboardTab refreshKey={refreshKey} inspectors={sharedInspectors} locations={sharedLocations} /></ErrorBoundary>
+            <ErrorBoundary><DashboardTab refreshKey={refreshKey} inspectors={sharedInspectors} locations={sharedLocations} onCitiesChanged={loadShared} /></ErrorBoundary>
           </div>
         )}
         {mountedTabs.has('locations') && (
@@ -239,7 +241,7 @@ export default function AdminShell() {
         )}
         {mountedTabs.has('checklist') && (
           <div style={{ display: tab === 'checklist' ? undefined : 'none' }}>
-            <ErrorBoundary><ChecklistAdmin refreshKey={refreshKey} /></ErrorBoundary>
+            <ErrorBoundary><ChecklistAdmin refreshKey={refreshKey} locations={sharedLocations} /></ErrorBoundary>
           </div>
         )}
         {mountedTabs.has('logs') && (
@@ -255,6 +257,11 @@ export default function AdminShell() {
         {mountedTabs.has('adminreports') && (
           <div style={{ display: tab === 'adminreports' ? undefined : 'none' }}>
             <ErrorBoundary><AdminReportTab refreshKey={refreshKey} locations={sharedLocations} /></ErrorBoundary>
+          </div>
+        )}
+        {mountedTabs.has('documents') && (
+          <div style={{ display: tab === 'documents' ? undefined : 'none' }}>
+            <ErrorBoundary><DocumentsTab refreshKey={refreshKey} locations={sharedLocations} inspectors={sharedInspectors} /></ErrorBoundary>
           </div>
         )}
       </main>
