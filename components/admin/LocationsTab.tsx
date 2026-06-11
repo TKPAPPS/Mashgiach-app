@@ -93,6 +93,7 @@ export default function LocationsTab({ refreshKey }: Props) {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [citySearch, setCitySearch] = useState('')
   const [groupByCity, setGroupByCity] = useState(true)
+  const [showInactive, setShowInactive] = useState(false)
 
   function handleSort(key: typeof sortKey) {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -118,8 +119,12 @@ export default function LocationsTab({ refreshKey }: Props) {
     return sortDir === 'asc' ? cmp : -cmp
   })
 
+  // Inactive locations are hidden by default (e.g. those deactivated in place of
+  // a blocked delete); the toggle reveals them so they can be reactivated.
+  const inactiveCount = locations.filter(l => l.status !== 'active').length
   const filtered = sorted.filter(l =>
-    !citySearch.trim() || (l.city ?? '').toLowerCase().includes(citySearch.trim().toLowerCase())
+    (showInactive || l.status === 'active') &&
+    (!citySearch.trim() || (l.city ?? '').toLowerCase().includes(citySearch.trim().toLowerCase()))
   )
 
   // Group filtered locations by city. Null/blank city sorts last under "ללא עיר".
@@ -242,12 +247,18 @@ export default function LocationsTab({ refreshKey }: Props) {
               <input type="checkbox" checked={groupByCity} onChange={e => setGroupByCity(e.target.checked)} />
               קבץ לפי עיר
             </label>
+            {inactiveCount > 0 && (
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '.82rem', color: 'var(--muted)', cursor: 'pointer', userSelect: 'none' }}>
+                <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />
+                הצג מושבתים ({inactiveCount})
+              </label>
+            )}
           </div>
         )}
         <div style={{ padding: '0 0 4px' }}>
           {loading ? <div className="emptyState"><span className="spinner" /></div> :
           locations.length === 0 ? <div className="emptyState">אין מקומות.</div> :
-          filtered.length === 0 ? <div className="emptyState">לא נמצאו מקומות לעיר זו.</div> :
+          filtered.length === 0 ? <div className="emptyState">לא נמצאו מקומות.</div> :
           <div className="tableWrap">
             <table>
               <thead>
