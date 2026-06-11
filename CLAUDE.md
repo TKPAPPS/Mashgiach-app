@@ -46,7 +46,7 @@ Two user-facing surfaces sharing a single Next.js app:
 
 **Inspector side** (`/inspector/*`) — mobile-first (max-width 480px), bottom nav, designed for phones. Inspectors scan QR codes, submit deficiency reports, request absences, and view location details.
 
-**Admin side** (`/admin`) — full-width dashboard SPA rendered as a single page with tab switching. All admin state lives in `AdminShell.tsx` (tab state, shared lookups, refreshKey). Ten tabs mount lazily and stay in DOM hidden with `display:none` when inactive — never unmount on tab switch.
+**Admin side** (`/admin`) — full-width dashboard SPA rendered as a single page with tab switching. All admin state lives in `AdminShell.tsx` (tab state, shared lookups, refreshKey). The tabs (dashboard, locations, inspectors, reports, deficiencies, absences, checklist, documents, logs, admins, adminreports) mount lazily and stay in DOM hidden with `display:none` when inactive — never unmount on tab switch.
 
 ```
 app/
@@ -211,6 +211,23 @@ Admin-authored reports per location with text body, attached files, and follow-u
 
 The "לוגי ביקורים" tab (id: `reports`) shows `visit_logs` scan history — not deficiency reports. The deficiency reports tab is "ליקויי כשרות" (id: `deficiencies`). This naming is intentional.
 
+## Checklists: per-location + daily/weekly
+
+`checklist_items` carry an optional `location_id` and a `frequency` (`daily` | `weekly`, default `daily`).
+
+- A location with its own items uses them. **If a location has zero items, the inspector falls back to the global default list** (`location_id IS NULL`). This fallback is the backward-compat mechanism: existing global items keep working at every location until an admin customizes one. Query lives in `app/inspector/checklist/page.tsx`.
+- The inspector exit form renders Daily and Weekly in separate sections; each submitted `visit_checks` row snapshots `frequency`.
+- `ChecklistAdmin.tsx` has a location selector (empty = the global default list), groups items by frequency, and has an opt-in "copy default list to this location" button (seeds the location with the current globals as daily items). Reorder swaps `sort_order` within the same frequency group.
+- Migration was additive only (nullable `location_id`, `frequency` with default; `visit_checks.frequency` nullable). Existing rows untouched. `location_id` and `frequency` are optional in the `checklist_items` Insert type (DB defaults) so the older `/api/admin/checklist` route still compiles.
+
+## Documents library
+
+Standalone documents/contracts library, separate from the per-inspector `profiles.contract_url`. Table `documents` (name, file_path, file_name, file_type, optional `location_id`/`inspector_id`, uploaded_by). Admin-gated `/api/admin/documents` (GET list with signed URLs, POST multipart upload, DELETE) reuses the `location-report-attachments` security model (20MB cap, MIME allowlist, `sharp` re-encode for images, extension-from-map, DB-row-first delete, storage rollback on DB-insert failure). `DocumentsTab.tsx` lists files with their location/inspector link. RLS is enabled with no policies (service-role route only; INFO-level advisor is intended).
+
+## Cities cleanup
+
+City is free text on `locations` (no cities table). `/api/admin/cities` lets an admin tidy that set: `PATCH { from, to }` renames a city across all its locations; `DELETE ?city=` detaches it (sets `city=null`), never deleting the locations. `CitiesManager.tsx` (a button on the Dashboard tab) lists distinct cities with counts; on change it re-runs `loadShared()`. `LocationsTab` groups the list by city (with a city search box); the Dashboard log table is collapsed by default.
+
 ## Location create/edit: field scope
 
 `LocationForm` (in `LocationsTab.tsx`) handles: name, city, address, QR code, GPS coords, status, contact fields, kashrus_procedure. Fields requiring a record ID stay in `LocationDetailModal` only: `kashrus_certificate_url` (file upload), inspector assignment.
@@ -221,6 +238,7 @@ The "לוגי ביקורים" tab (id: `reports`) shows `visit_logs` scan histor
 - `certificates` — public; kosher certificates for locations
 - `kashrus-procedures` — private
 - `admin-reports` — private; signed URLs per attachment (1-hour expiry)
+- `documents` — private; standalone documents/contracts library (signed URLs, 1-hour expiry)
 
 ## Contract URL handling
 
