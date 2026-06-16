@@ -217,6 +217,19 @@ CREATE TABLE documents (
 );
 
 -- -------------------------------------------------------
+-- REPORT SETTINGS (single-row config for the daily manager email report)
+-- -------------------------------------------------------
+CREATE TABLE report_settings (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  enabled        boolean NOT NULL DEFAULT false,
+  send_time      text NOT NULL DEFAULT '10:00',          -- HH:MM, Asia/Bangkok
+  recipients     text[] NOT NULL DEFAULT '{}',
+  sections       text[] NOT NULL DEFAULT '{summary,time_per_restaurant,deficiencies,checklist_details}',
+  last_sent_date date,                                    -- Bangkok date of last send; idempotency guard
+  updated_at     timestamptz NOT NULL DEFAULT now()
+);
+
+-- -------------------------------------------------------
 -- ROW LEVEL SECURITY
 -- -------------------------------------------------------
 ALTER TABLE profiles            ENABLE ROW LEVEL SECURITY;
@@ -232,6 +245,8 @@ ALTER TABLE gps_alerts          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE push_subscriptions  ENABLE ROW LEVEL SECURITY;
 -- documents: RLS on with no policies; all access is via the admin service-role route.
 ALTER TABLE documents           ENABLE ROW LEVEL SECURITY;
+-- report_settings: RLS on with no policies; all access is via the admin/cron service-role routes.
+ALTER TABLE report_settings     ENABLE ROW LEVEL SECURITY;
 
 -- Helper: is current user admin?
 CREATE OR REPLACE FUNCTION is_admin()

@@ -208,6 +208,18 @@ export type GpsAlert = {
   visit_log?: Pick<VisitLog, 'device_lat' | 'device_lng'> | null
 }
 
+export type ReportSection = 'summary' | 'time_per_restaurant' | 'deficiencies' | 'checklist_details'
+
+export type ReportSettings = {
+  id: string
+  enabled: boolean
+  send_time: string            // HH:MM, Asia/Bangkok
+  recipients: string[]
+  sections: ReportSection[]
+  last_sent_date: string | null
+  updated_at: string
+}
+
 type TableDef<Row, Insert, Update> = {
   Row: Row
   Insert: Insert
@@ -235,6 +247,7 @@ export type Database = {
       admin_report_followups:    TableDef<AdminReportFollowup, Omit<AdminReportFollowup,'id'|'created_at'>, Partial<AdminReportFollowup>>
       push_subscriptions:        TableDef<{ id: string; user_id: string; endpoint: string; p256dh: string; auth: string; created_at: string }, { user_id: string; endpoint: string; p256dh: string; auth: string }, { user_id?: string; endpoint?: string; p256dh?: string; auth?: string }>
       documents:                 TableDef<Document, Omit<Document,'id'|'created_at'>, Partial<Document>>
+      report_settings:           TableDef<ReportSettings, Partial<Omit<ReportSettings,'id'|'updated_at'>>, Partial<Omit<ReportSettings,'id'>>>
     }
     Views: Record<string, never>
     Functions: Record<string, never>

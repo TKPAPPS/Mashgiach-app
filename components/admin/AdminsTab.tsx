@@ -5,6 +5,7 @@ import { Plus, Pen, Trash2, KeyRound } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import type { Profile } from '@/lib/supabase/types'
+import ReportSettings from './ReportSettings'
 
 type Props = {
   refreshKey: number
@@ -103,6 +104,7 @@ export default function AdminsTab({ refreshKey, emailMap, currentUserId }: Props
   }
 
   return (
+    <>
     <div className="card">
       <div className="card__header--inline">
         <div className="card__title">מנהלים</div>
@@ -206,5 +208,8 @@ export default function AdminsTab({ refreshKey, emailMap, currentUserId }: Props
         <p>האם אתה בטוח שברצונך למחוק מנהל זה? הפעולה אינה הפיכה.</p>
       </Modal>
     </div>
+
+    <ReportSettings />
+    </>
   )
 }
