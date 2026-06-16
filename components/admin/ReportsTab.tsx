@@ -134,10 +134,15 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
     if (filters.from && l.created_at < filters.from) return false
     if (filters.to && l.created_at > filters.to + 'T23:59:59') return false
     if (q) {
-      const insp = norm((l.inspector as { full_name?: string } | undefined)?.full_name ?? '')
-      const loc = norm((l.location as { name?: string } | undefined)?.name ?? '')
-      const status = norm(statusLabel(l.internal_status).label)
-      if (!insp.includes(q) && !loc.includes(q) && !status.includes(q)) return false
+      const haystack = [
+        (l.inspector as { full_name?: string } | undefined)?.full_name ?? '',
+        (l.location as { name?: string } | undefined)?.name ?? '',
+        statusLabel(l.internal_status).label,
+        actionLabel(l.action_type),
+        l.action_type,        // raw 'entry' / 'exit'
+        l.internal_status,    // raw 'gps_mismatch' / 'unauthorized' / ...
+      ].map(norm)
+      if (!haystack.some(h => h.includes(q))) return false
     }
     return true
   })

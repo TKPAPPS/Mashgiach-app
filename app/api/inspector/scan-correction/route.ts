@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
   if (exitMs <= entryMs) {
     return NextResponse.json({ error: 'זמן היציאה חייב להיות אחרי זמן הכניסה' }, { status: 400 })
   }
-  if (entryMs > Date.now() + 60_000) {
+  if (Math.max(entryMs, exitMs) > Date.now() + 60_000) {
     return NextResponse.json({ error: 'לא ניתן לדווח על זמן עתידי' }, { status: 400 })
   }
 

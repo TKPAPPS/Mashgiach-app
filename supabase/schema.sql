@@ -325,6 +325,12 @@ CREATE POLICY "ga_admin_all"          ON gps_alerts FOR ALL TO authenticated USI
 -- Push subscriptions: own
 CREATE POLICY "ps_self_all"           ON push_subscriptions FOR ALL TO authenticated USING (user_id = auth.uid());
 
+-- scan_corrections: admins manage all; inspectors create and read their own.
+-- Approval runs through apply_scan_correction() (security definer, in a migration).
+CREATE POLICY "sc_admin_all"          ON scan_corrections FOR ALL    TO authenticated USING (is_admin());
+CREATE POLICY "sc_self_insert"        ON scan_corrections FOR INSERT TO authenticated WITH CHECK (inspector_id = auth.uid());
+CREATE POLICY "sc_self_select"        ON scan_corrections FOR SELECT TO authenticated USING (inspector_id = auth.uid());
+
 -- -------------------------------------------------------
 -- STORAGE BUCKETS (run in Supabase Dashboard > Storage)
 -- -------------------------------------------------------

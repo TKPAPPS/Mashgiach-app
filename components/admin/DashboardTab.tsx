@@ -56,7 +56,10 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
     const f = filtersRef.current
     const hasRange = !!(f.from || f.to)
-    const endIso = f.to ? `${f.to}T23:59:59` : null
+    // Date inputs are Bangkok calendar days; pin the bounds to +07:00 so the
+    // window matches the emailed daily report (which also uses Asia/Bangkok).
+    const fromBound = f.from ? `${f.from}T00:00:00+07:00` : null
+    const toBound = f.to ? `${f.to}T23:59:59+07:00` : null
 
     let logsQuery = supabase.from('visit_logs')
       .select('id,action_type,location_id,inspector_id,internal_status,device_lat,device_lng,distance_meters,created_at,inspector:profiles(id,full_name),location:locations(id,name,city)')
@@ -66,8 +69,8 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
       .order('created_at', { ascending: false })
 
     if (hasRange) {
-      if (f.from) { logsQuery = logsQuery.gte('created_at', f.from); checksQuery = checksQuery.gte('created_at', f.from) }
-      if (endIso) { logsQuery = logsQuery.lte('created_at', endIso); checksQuery = checksQuery.lte('created_at', endIso) }
+      if (fromBound) { logsQuery = logsQuery.gte('created_at', fromBound); checksQuery = checksQuery.gte('created_at', fromBound) }
+      if (toBound) { logsQuery = logsQuery.lte('created_at', toBound); checksQuery = checksQuery.lte('created_at', toBound) }
       logsQuery = logsQuery.limit(1000); checksQuery = checksQuery.limit(1000)
     } else {
       logsQuery = logsQuery.limit(50); checksQuery = checksQuery.limit(40)
@@ -115,13 +118,13 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
     }
   }
 
+  // Date range is applied server-side (in Bangkok time) by loadAll; the
+  // remaining filters are client-side over the fetched rows.
   const filtered = logs.filter(l => {
     if (filters.inspector && l.inspector_id !== filters.inspector) return false
     if (filters.location && l.location_id !== filters.location) return false
     if (filters.action && l.action_type !== filters.action) return false
     if (filters.city && (l.location as { city?: string | null } | undefined)?.city !== filters.city) return false
-    if (filters.from && l.created_at < filters.from) return false
-    if (filters.to && l.created_at > filters.to + 'T23:59:59') return false
     return true
   })
 
