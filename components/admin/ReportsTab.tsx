@@ -88,7 +88,7 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
   const supabase = useMemo(() => createClient(), [])
   const [logs, setLogs] = useState<VisitLog[]>([])
   const [loading, setLoading] = useState(true)
-  const [filters, setFilters] = useState({ from: DEFAULT_FROM, to: '', inspector: '', location: '', action: '' })
+  const [filters, setFilters] = useState({ from: DEFAULT_FROM, to: '', inspector: '', location: '', action: '', search: '' })
   const [photoCounts, setPhotoCounts] = useState<Record<string, number>>({})
   const [photoModalId, setPhotoModalId] = useState<string | null>(null)
   const [timeSpent, setTimeSpent] = useState<Record<string, string>>({})
@@ -125,12 +125,20 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
     }
   }
 
+  const norm = (s: string) => s.normalize('NFC').trim().toLowerCase()
+  const q = norm(filters.search)
   const filtered = logs.filter(l => {
     if (filters.inspector && l.inspector_id !== filters.inspector) return false
     if (filters.location && l.location_id !== filters.location) return false
     if (filters.action && l.action_type !== filters.action) return false
     if (filters.from && l.created_at < filters.from) return false
     if (filters.to && l.created_at > filters.to + 'T23:59:59') return false
+    if (q) {
+      const insp = norm((l.inspector as { full_name?: string } | undefined)?.full_name ?? '')
+      const loc = norm((l.location as { name?: string } | undefined)?.name ?? '')
+      const status = norm(statusLabel(l.internal_status).label)
+      if (!insp.includes(q) && !loc.includes(q) && !status.includes(q)) return false
+    }
     return true
   })
 
@@ -187,6 +195,10 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
                 <option value="entry">כניסה</option>
                 <option value="exit">יציאה</option>
               </select>
+            </label>
+            <label className="field"><span>חיפוש חופשי</span>
+              <input type="text" value={filters.search} placeholder="שם משגיח, מקום או סטטוס"
+                onChange={e => setFilters(f => ({ ...f, search: e.target.value }))} />
             </label>
           </div>
           <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>

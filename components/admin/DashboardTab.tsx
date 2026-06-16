@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef, Fragment } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
   CircleCheck, Users, CalendarDays, AlertTriangle, ListChecks, ChevronDown, ChevronUp, Clock
@@ -26,6 +26,13 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
   const [filters, setFilters] = useState({ from: '', to: '', inspector: '', location: '', city: '', action: '' })
   const [loading, setLoading] = useState(true)
   const [showLogs, setShowLogs] = useState(false)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [rowChecks, setRowChecks] = useState<Record<string, VisitCheck[]>>({})
+
+  // loadAll reads the active date range via a ref so the 30s auto-refresh and
+  // the range effect both use the latest filters without stale closures.
+  const filtersRef = useRef(filters)
+  filtersRef.current = filters
 
   useEffect(() => { loadAll() }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -35,10 +42,36 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
     return () => clearInterval(id)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // When a date range is chosen, fetch that range from the server (the default
+  // view only loads the latest rows, so old days would otherwise be empty).
+  const firstRange = useRef(true)
+  useEffect(() => {
+    if (firstRange.current) { firstRange.current = false; return }
+    loadAll()
+  }, [filters.from, filters.to]) // eslint-disable-line react-hooks/exhaustive-deps
+
   async function loadAll() {
     setLoading(true)
     const now = new Date()
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+    const f = filtersRef.current
+    const hasRange = !!(f.from || f.to)
+    const endIso = f.to ? `${f.to}T23:59:59` : null
+
+    let logsQuery = supabase.from('visit_logs')
+      .select('id,action_type,location_id,inspector_id,internal_status,device_lat,device_lng,distance_meters,created_at,inspector:profiles(id,full_name),location:locations(id,name,city)')
+      .order('created_at', { ascending: false })
+    let checksQuery = supabase.from('visit_checks')
+      .select('id,visit_log_id,item_name,note,created_at,inspector:profiles(id,full_name),location:locations(id,name)')
+      .order('created_at', { ascending: false })
+
+    if (hasRange) {
+      if (f.from) { logsQuery = logsQuery.gte('created_at', f.from); checksQuery = checksQuery.gte('created_at', f.from) }
+      if (endIso) { logsQuery = logsQuery.lte('created_at', endIso); checksQuery = checksQuery.lte('created_at', endIso) }
+      logsQuery = logsQuery.limit(1000); checksQuery = checksQuery.limit(1000)
+    } else {
+      logsQuery = logsQuery.limit(50); checksQuery = checksQuery.limit(40)
+    }
 
     const [
       { data: logsData },
@@ -48,15 +81,11 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
       { count: thisMonth },
       { count: inspCount },
     ] = await Promise.all([
-      supabase.from('visit_logs')
-        .select('id,action_type,location_id,inspector_id,internal_status,device_lat,device_lng,distance_meters,created_at,inspector:profiles(id,full_name),location:locations(id,name,city)')
-        .order('created_at', { ascending: false }).limit(50),
+      logsQuery,
       supabase.from('gps_alerts')
         .select('id,created_at,action_type,distance_meters,read,inspector:profiles(id,full_name),location:locations(id,name,city),visit_log:visit_logs(device_lat,device_lng)')
         .eq('read', false).order('created_at', { ascending: false }).limit(10),
-      supabase.from('visit_checks')
-        .select('id,visit_log_id,item_name,note,created_at,inspector:profiles(id,full_name),location:locations(id,name)')
-        .order('created_at', { ascending: false }).limit(40),
+      checksQuery,
       supabase.from('visit_logs').select('id', { count: 'estimated', head: true }),
       supabase.from('visit_logs').select('id', { count: 'estimated', head: true }).gte('created_at', monthStart),
       supabase.from('profiles').select('id', { count: 'estimated', head: true }).eq('role', 'mashgiach'),
@@ -71,6 +100,19 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
       thisMonth: thisMonth ?? 0,
     })
     setLoading(false)
+  }
+
+  // Expand a log row to show the checklist items marked during that visit.
+  // Checks are fetched on demand by visit_log_id and cached.
+  async function toggleRow(logId: string) {
+    if (expandedId === logId) { setExpandedId(null); return }
+    setExpandedId(logId)
+    if (!rowChecks[logId]) {
+      const { data } = await supabase.from('visit_checks')
+        .select('id,item_name,note,created_at')
+        .eq('visit_log_id', logId).order('created_at', { ascending: true })
+      setRowChecks(prev => ({ ...prev, [logId]: (data ?? []) as VisitCheck[] }))
+    }
   }
 
   const filtered = logs.filter(l => {
@@ -251,6 +293,10 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
         </div>
         <div className="card__body">
           <div className="filtersGrid">
+            <label className="field"><span>יום ספציפי</span>
+              <input type="date" value={filters.from && filters.from === filters.to ? filters.from : ''}
+                onChange={e => { const d = e.target.value; setFilters(f => ({ ...f, from: d, to: d })) }} />
+            </label>
             <label className="field"><span>מתאריך</span>
               <input type="date" value={filters.from} onChange={e => setFilters(f => ({...f, from: e.target.value}))} />
             </label>
@@ -314,28 +360,55 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
                     const { label, cls } = statusLabel(log.internal_status)
                     const insp = log.inspector as { full_name: string } | undefined
                     const loc = log.location as { name: string; city: string | null } | undefined
+                    const isExit = log.action_type === 'exit'
+                    const isOpen = expandedId === log.id
+                    const checks = rowChecks[log.id]
                     return (
-                      <tr key={log.id}>
+                      <Fragment key={log.id}>
+                      <tr onClick={isExit ? () => toggleRow(log.id) : undefined}
+                        style={isExit ? { cursor: 'pointer' } : undefined}>
                         <td className="noWrap">{formatDateTime(log.created_at)}</td>
-                        <td>{actionLabel(log.action_type)}</td>
+                        <td>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            {isExit && (isOpen ? <ChevronUp size={13} aria-hidden /> : <ChevronDown size={13} aria-hidden />)}
+                            {actionLabel(log.action_type)}
+                          </span>
+                        </td>
                         <td>{insp?.full_name ?? '-'}</td>
                         <td>{loc?.name ?? <span className="mutedCell">לא זוהה</span>}</td>
                         <td>{loc?.city ?? <span className="mutedCell">-</span>}</td>
                         <td>
-                          {log.action_type === 'exit' && timeSpent[log.id]
+                          {isExit && timeSpent[log.id]
                             ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Clock size={12} aria-hidden />{timeSpent[log.id]}</span>
                             : <span className="mutedCell">-</span>}
                         </td>
                         <td><span className={`badge ${cls}`}>{label}</span></td>
                         <td>
                           {log.device_lat && log.device_lng
-                            ? <a className="coordsLink" href={`https://www.google.com/maps?q=${log.device_lat},${log.device_lng}`} target="_blank" rel="noreferrer">
+                            ? <a className="coordsLink" href={`https://www.google.com/maps?q=${log.device_lat},${log.device_lng}`} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}>
                                 {log.device_lat.toFixed(6)}, {log.device_lng.toFixed(6)}
                               </a>
                             : <span className="mutedCell">-</span>}
                         </td>
                         <td>{log.distance_meters != null ? `${log.distance_meters} מ׳` : <span className="mutedCell">-</span>}</td>
                       </tr>
+                      {isExit && isOpen && (
+                        <tr>
+                          <td colSpan={9} style={{ background: 'var(--bg-muted, #f8fafc)', padding: '6px 14px' }}>
+                            {checks === undefined ? <span className="textSm textMuted">טוען...</span> :
+                             checks.length === 0 ? <span className="textSm textMuted">לא תועדו בדיקות בביקור זה.</span> :
+                             <table style={{ margin: 0 }}>
+                               <thead><tr><th>בדיקה</th><th>הערה</th></tr></thead>
+                               <tbody>
+                                 {checks.map(c => (
+                                   <tr key={c.id}><td>{c.item_name ?? '-'}</td><td>{c.note ?? <span className="mutedCell">-</span>}</td></tr>
+                                 ))}
+                               </tbody>
+                             </table>}
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
                     )
                   })}
                 </tbody>

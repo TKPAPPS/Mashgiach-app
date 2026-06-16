@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import {
   RefreshCw, LogOut, Bell, BellOff,
   CalendarDays, MapPin, Users, FileText,
-  AlertTriangle, CheckSquare, ScrollText, ShieldCheck, ClipboardList, Files
+  AlertTriangle, CheckSquare, ShieldCheck, ClipboardList, Files
 } from 'lucide-react'
 import Image from 'next/image'
 import type { Profile } from '@/lib/supabase/types'
@@ -17,7 +17,6 @@ import ReportsTab      from './ReportsTab'
 import DeficienciesTab from './DeficienciesTab'
 import ChecklistAdmin  from './ChecklistAdmin'
 import AbsencesTab     from './AbsencesTab'
-import SystemLogsTab   from './SystemLogsTab'
 import AdminsTab       from './AdminsTab'
 import AdminReportTab  from './AdminReportTab'
 import DocumentsTab    from './DocumentsTab'
@@ -27,7 +26,7 @@ export type SharedInspector = { id: string; full_name: string }
 export type SharedLocation   = { id: string; name: string; city: string | null; status: string }
 export type SharedIL         = { inspector_id: string; location_id: string }
 
-type Tab = 'dashboard' | 'locations' | 'inspectors' | 'reports' | 'deficiencies' | 'checklist' | 'absences' | 'logs' | 'admins' | 'adminreports' | 'documents'
+type Tab = 'dashboard' | 'locations' | 'inspectors' | 'reports' | 'deficiencies' | 'checklist' | 'absences' | 'admins' | 'adminreports' | 'documents'
 
 const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
   { id: 'dashboard',    label: 'דשבורד',        Icon: CalendarDays },
@@ -38,7 +37,6 @@ const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
   { id: 'absences',     label: 'היעדרויות',      Icon: CalendarDays },
   { id: 'checklist',    label: 'רשימת בדיקות',   Icon: CheckSquare },
   { id: 'documents',    label: 'מסמכים',         Icon: Files },
-  { id: 'logs',         label: 'לוגים',          Icon: ScrollText },
   { id: 'admins',       label: 'מנהלים',         Icon: ShieldCheck },
   { id: 'adminreports', label: 'דוח מנהל',       Icon: ClipboardList },
 ]
@@ -58,10 +56,12 @@ export default function AdminShell() {
   const [emailMap,         setEmailMap]         = useState<Record<string, string | null>>({})
 
   useEffect(() => {
-    const saved = localStorage.getItem('adminTab') as Tab | null
-    if (saved) {
-      setTab(saved)
-      setMountedTabs(prev => new Set([...prev, saved]))
+    const saved = localStorage.getItem('adminTab')
+    // 'logs' was merged into 'reports'; redirect any stale saved value.
+    const resolved = (saved === 'logs' ? 'reports' : saved) as Tab | null
+    if (resolved && TABS.some(t => t.id === resolved)) {
+      setTab(resolved)
+      setMountedTabs(prev => new Set([...prev, resolved]))
     }
   }, [])
 
@@ -242,11 +242,6 @@ export default function AdminShell() {
         {mountedTabs.has('checklist') && (
           <div style={{ display: tab === 'checklist' ? undefined : 'none' }}>
             <ErrorBoundary><ChecklistAdmin refreshKey={refreshKey} locations={sharedLocations} /></ErrorBoundary>
-          </div>
-        )}
-        {mountedTabs.has('logs') && (
-          <div style={{ display: tab === 'logs' ? undefined : 'none' }}>
-            <ErrorBoundary><SystemLogsTab refreshKey={refreshKey} /></ErrorBoundary>
           </div>
         )}
         {mountedTabs.has('admins') && (

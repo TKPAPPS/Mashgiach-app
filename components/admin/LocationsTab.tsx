@@ -174,9 +174,13 @@ export default function LocationsTab({ refreshKey }: Props) {
   // Inactive locations are hidden by default (e.g. those deactivated in place of
   // a blocked delete); the toggle reveals them so they can be reactivated.
   const inactiveCount = locations.filter(l => l.status !== 'active').length
+  // Normalize so Hebrew (and Latin) text matches reliably regardless of
+  // composition form or stray whitespace/case.
+  const norm = (s: string) => s.normalize('NFC').trim().toLowerCase()
+  const q = norm(citySearch)
   const filtered = sorted.filter(l =>
     (showInactive || l.status === 'active') &&
-    (!citySearch.trim() || (l.city ?? '').toLowerCase().includes(citySearch.trim().toLowerCase()))
+    (!q || norm(l.name ?? '').includes(q) || norm(l.city ?? '').includes(q) || norm(l.address ?? '').includes(q))
   )
 
   // Group filtered locations by city. Null/blank city sorts last under "ללא עיר".
@@ -296,7 +300,7 @@ export default function LocationsTab({ refreshKey }: Props) {
               <input
                 value={citySearch}
                 onChange={e => setCitySearch(e.target.value)}
-                placeholder="חיפוש לפי עיר..."
+                placeholder="חיפוש לפי שם, עיר או כתובת..."
                 style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '7px 10px 7px 30px', fontSize: '.85rem' }}
               />
             </div>
