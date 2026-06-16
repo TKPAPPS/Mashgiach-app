@@ -35,23 +35,6 @@ function LocationForm({
   const [qr, setQr] = useState(() => loc?.qr_code ?? genQrCode())
   const [lat, setLat] = useState(() => loc?.lat != null ? String(loc.lat) : '')
   const [lng, setLng] = useState(() => loc?.lng != null ? String(loc.lng) : '')
-  const [geoLoading, setGeoLoading] = useState(false)
-  const [geoError, setGeoError] = useState('')
-
-  function useCurrentLocation() {
-    if (!navigator.geolocation) { setGeoError('המכשיר אינו תומך באיתור מיקום'); return }
-    setGeoError('')
-    setGeoLoading(true)
-    navigator.geolocation.getCurrentPosition(
-      pos => {
-        setLat(pos.coords.latitude.toFixed(7))
-        setLng(pos.coords.longitude.toFixed(7))
-        setGeoLoading(false)
-      },
-      () => { setGeoError('לא ניתן לאתר מיקום. בדוק הרשאות.'); setGeoLoading(false) },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
-    )
-  }
 
   return (
     <form id={formId} onSubmit={onSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -79,18 +62,14 @@ function LocationForm({
         <label className="field"><span>קו רוחב (Latitude)</span><input name="lat" type="number" step="any" value={lat} onChange={e => setLat(e.target.value)} placeholder="13.7563" /></label>
         <label className="field"><span>קו אורך (Longitude)</span><input name="lng" type="number" step="any" value={lng} onChange={e => setLng(e.target.value)} placeholder="100.5018" /></label>
       </div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: -4 }}>
-        <button type="button" className="button button--ghost button--sm" onClick={useCurrentLocation} disabled={geoLoading}>
-          {geoLoading ? <span className="spinner" /> : <><MapPin size={13} /> השתמש במיקום הנוכחי</>}
-        </button>
-        {lat && lng && (
+      {lat && lng && (
+        <div style={{ marginTop: -4 }}>
           <a href={`https://www.google.com/maps?q=${lat},${lng}`} target="_blank" rel="noopener noreferrer"
             style={{ fontSize: '.8rem', color: 'var(--primary)' }}>
             הצג על המפה
           </a>
-        )}
-        {geoError && <span style={{ fontSize: '.78rem', color: 'var(--danger)' }}>{geoError}</span>}
-      </div>
+        </div>
+      )}
 
       {/* Status (edit only) */}
       {loc && (
