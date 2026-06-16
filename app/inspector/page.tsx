@@ -140,6 +140,13 @@ export default function InspectorHome() {
             {loading
               ? <div className="emptyState"><span className="spinner" /></div>
               : <AbsenceForm profile={profile} locations={locations} />}
+
+            <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '24px 0 16px' }} />
+            <div style={{ fontWeight: 700, fontSize: '1.05rem', marginBottom: 6 }}>דיווח על שכחת יציאה</div>
+            <p style={{ fontSize: '.82rem', color: 'var(--muted)', margin: '0 0 14px' }}>
+              שכחת לסרוק יציאה? דווח על שעות הכניסה והיציאה המשוערות, והמנהל יאשר.
+            </p>
+            {!loading && <ScanCorrectionForm profile={profile} locations={locations} />}
           </div>
         )}
 
@@ -430,6 +437,70 @@ function AbsenceForm({ profile, locations }: { profile: Profile | null; location
       </label>
       <button className="button button--primary" type="submit" disabled={saving}>
         {saving ? <span className="spinner" /> : 'שלח בקשה'}
+      </button>
+    </form>
+  )
+}
+
+function ScanCorrectionForm({ profile, locations }: { profile: Profile | null; locations: Location[] }) {
+  const [saving, setSaving] = useState(false)
+  const [done, setDone] = useState(false)
+  const [error, setError] = useState('')
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    if (!profile) return
+    setError('')
+    setSaving(true)
+    const fd = new FormData(e.currentTarget)
+    const res = await fetch('/api/inspector/scan-correction', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        location_id: (fd.get('location_id') as string) || null,
+        est_entry: (fd.get('est_entry') as string) || null,
+        est_exit: (fd.get('est_exit') as string) || null,
+        note: (fd.get('note') as string) || null,
+      }),
+    })
+    setSaving(false)
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}))
+      setError(j.error ?? 'שגיאה בשליחה, נסה שנית')
+      return
+    }
+    setDone(true)
+    setTimeout(() => setDone(false), 3000)
+    ;(e.target as HTMLFormElement).reset()
+  }
+
+  if (done) return (
+    <div className="card" style={{ textAlign: 'center', padding: 32 }}>
+      <div style={{ color: 'var(--success)', fontSize: '2rem' }}>✓</div>
+      <div style={{ marginTop: 8 }}>הבקשה נשלחה לאישור המנהל</div>
+    </div>
+  )
+
+  return (
+    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <label className="field">
+        <span>מקום *</span>
+        <select name="location_id" required defaultValue="">
+          <option value="" disabled>בחר מקום</option>
+          {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+        </select>
+      </label>
+      <div className="fieldRow">
+        <label className="field"><span>זמן כניסה משוער *</span><input name="est_entry" type="datetime-local" required /></label>
+        <label className="field"><span>זמן יציאה משוער *</span><input name="est_exit" type="datetime-local" required /></label>
+      </div>
+      <label className="field">
+        <span>הערה</span>
+        <textarea name="note" rows={3} placeholder="פרטים נוספים..." />
+      </label>
+      {error && <div style={{ color: 'var(--danger)', fontSize: '.85rem' }}>{error}</div>}
+      <button className="button button--primary" type="submit" disabled={saving}>
+        {saving ? <span className="spinner" /> : 'שלח בקשת תיקון'}
       </button>
     </form>
   )

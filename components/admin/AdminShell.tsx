@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import {
   RefreshCw, LogOut, Bell, BellOff,
   CalendarDays, MapPin, Users, FileText,
-  AlertTriangle, CheckSquare, ShieldCheck, ClipboardList, Files
+  AlertTriangle, CheckSquare, ShieldCheck, ClipboardList, Files, ClipboardCheck
 } from 'lucide-react'
 import Image from 'next/image'
 import type { Profile } from '@/lib/supabase/types'
@@ -17,6 +17,7 @@ import ReportsTab      from './ReportsTab'
 import DeficienciesTab from './DeficienciesTab'
 import ChecklistAdmin  from './ChecklistAdmin'
 import AbsencesTab     from './AbsencesTab'
+import ScanCorrectionsTab from './ScanCorrectionsTab'
 import AdminsTab       from './AdminsTab'
 import AdminReportTab  from './AdminReportTab'
 import DocumentsTab    from './DocumentsTab'
@@ -26,7 +27,7 @@ export type SharedInspector = { id: string; full_name: string }
 export type SharedLocation   = { id: string; name: string; city: string | null; status: string }
 export type SharedIL         = { inspector_id: string; location_id: string }
 
-type Tab = 'dashboard' | 'locations' | 'inspectors' | 'reports' | 'deficiencies' | 'checklist' | 'absences' | 'admins' | 'adminreports' | 'documents'
+type Tab = 'dashboard' | 'locations' | 'inspectors' | 'reports' | 'deficiencies' | 'checklist' | 'absences' | 'corrections' | 'admins' | 'adminreports' | 'documents'
 
 const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
   { id: 'dashboard',    label: 'דשבורד',        Icon: CalendarDays },
@@ -35,6 +36,7 @@ const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
   { id: 'reports',      label: 'לוגי ביקורים',   Icon: FileText },
   { id: 'deficiencies', label: 'ליקויי כשרות',   Icon: AlertTriangle },
   { id: 'absences',     label: 'היעדרויות',      Icon: CalendarDays },
+  { id: 'corrections',  label: 'תיקוני סריקה',   Icon: ClipboardCheck },
   { id: 'checklist',    label: 'רשימת בדיקות',   Icon: CheckSquare },
   { id: 'documents',    label: 'מסמכים',         Icon: Files },
   { id: 'admins',       label: 'מנהלים',         Icon: ShieldCheck },
@@ -242,6 +244,11 @@ export default function AdminShell() {
         {mountedTabs.has('checklist') && (
           <div style={{ display: tab === 'checklist' ? undefined : 'none' }}>
             <ErrorBoundary><ChecklistAdmin refreshKey={refreshKey} locations={sharedLocations} /></ErrorBoundary>
+          </div>
+        )}
+        {mountedTabs.has('corrections') && (
+          <div style={{ display: tab === 'corrections' ? undefined : 'none' }}>
+            <ErrorBoundary><ScanCorrectionsTab refreshKey={refreshKey} /></ErrorBoundary>
           </div>
         )}
         {mountedTabs.has('admins') && (

@@ -52,6 +52,7 @@ export type VisitLog = {
   device_lat: number | null
   device_lng: number | null
   device_accuracy_m: number | null
+  manual_correction?: boolean
   distance_meters: number | null
   internal_status: VisitStatus
   qr_code_scanned: string | null
@@ -208,6 +209,26 @@ export type GpsAlert = {
   visit_log?: Pick<VisitLog, 'device_lat' | 'device_lng'> | null
 }
 
+export type ScanCorrectionStatus = 'pending' | 'approved' | 'denied'
+
+export type ScanCorrection = {
+  id: string
+  inspector_id: string
+  location_id: string
+  est_entry: string
+  est_exit: string
+  note: string | null
+  status: ScanCorrectionStatus
+  admin_notes: string | null
+  reviewed_by: string | null
+  reviewed_at: string | null
+  entry_log_id: string | null
+  exit_log_id: string | null
+  created_at: string
+  inspector?: Pick<Profile, 'id' | 'full_name'>
+  location?: Pick<Location, 'id' | 'name' | 'city'>
+}
+
 export type ReportSection = 'summary' | 'time_per_restaurant' | 'deficiencies' | 'checklist_details'
 
 export type ReportSettings = {
@@ -248,6 +269,7 @@ export type Database = {
       push_subscriptions:        TableDef<{ id: string; user_id: string; endpoint: string; p256dh: string; auth: string; created_at: string }, { user_id: string; endpoint: string; p256dh: string; auth: string }, { user_id?: string; endpoint?: string; p256dh?: string; auth?: string }>
       documents:                 TableDef<Document, Omit<Document,'id'|'created_at'>, Partial<Document>>
       report_settings:           TableDef<ReportSettings, Partial<Omit<ReportSettings,'id'|'updated_at'>>, Partial<Omit<ReportSettings,'id'>>>
+      scan_corrections:          TableDef<ScanCorrection, Omit<ScanCorrection,'id'|'created_at'|'status'|'admin_notes'|'reviewed_by'|'reviewed_at'|'entry_log_id'|'exit_log_id'|'inspector'|'location'>, Partial<Omit<ScanCorrection,'inspector'|'location'>>>
     }
     Views: Record<string, never>
     Functions: Record<string, never>

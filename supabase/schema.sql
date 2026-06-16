@@ -84,6 +84,7 @@ CREATE TABLE visit_logs (
   device_lat       decimal(10,7),
   device_lng       decimal(10,7),
   device_accuracy_m double precision,
+  manual_correction boolean NOT NULL DEFAULT false,   -- created by an approved scan correction
   distance_meters  int,
   internal_status  text NOT NULL CHECK (internal_status IN ('success','unauthorized','invalid_location','gps_mismatch','error')),
   qr_code_scanned  text,
@@ -217,6 +218,27 @@ CREATE TABLE documents (
 );
 
 -- -------------------------------------------------------
+-- SCAN CORRECTIONS (inspector "forgot to scan out" requests)
+-- On approval, apply_scan_correction() creates the entry+exit visit_logs at the
+-- estimated times (flagged visit_logs.manual_correction = true).
+-- -------------------------------------------------------
+CREATE TABLE scan_corrections (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  inspector_id uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  location_id  uuid NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+  est_entry    timestamptz NOT NULL,
+  est_exit     timestamptz NOT NULL,
+  note         text,
+  status       text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','denied')),
+  admin_notes  text,
+  reviewed_by  uuid REFERENCES profiles(id),
+  reviewed_at  timestamptz,
+  entry_log_id uuid REFERENCES visit_logs(id),
+  exit_log_id  uuid REFERENCES visit_logs(id),
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+
+-- -------------------------------------------------------
 -- REPORT SETTINGS (single-row config for the daily manager email report)
 -- -------------------------------------------------------
 CREATE TABLE report_settings (
@@ -247,6 +269,7 @@ ALTER TABLE push_subscriptions  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE documents           ENABLE ROW LEVEL SECURITY;
 -- report_settings: RLS on with no policies; all access is via the admin/cron service-role routes.
 ALTER TABLE report_settings     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE scan_corrections    ENABLE ROW LEVEL SECURITY;
 
 -- Helper: is current user admin?
 CREATE OR REPLACE FUNCTION is_admin()
