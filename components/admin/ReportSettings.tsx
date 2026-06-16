@@ -102,13 +102,13 @@ export default function ReportSettings() {
               style={{ direction: 'ltr', fontFamily: 'monospace', fontSize: '.85rem' }} />
           </label>
 
-          <div className="field">
-            <span>תוכן הדוח</span>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+          <div>
+            <span style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>תוכן הדוח</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
               {SECTION_OPTIONS.map(s => (
-                <label key={s.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '.85rem', cursor: 'pointer', userSelect: 'none' }}>
-                  <input type="checkbox" checked={sections.has(s.id)} onChange={() => toggleSection(s.id)} />
-                  {s.label}
+                <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.85rem', cursor: 'pointer', userSelect: 'none' }}>
+                  <input type="checkbox" checked={sections.has(s.id)} onChange={() => toggleSection(s.id)} style={{ width: 'auto', flex: '0 0 auto', margin: 0 }} />
+                  <span>{s.label}</span>
                 </label>
               ))}
             </div>
