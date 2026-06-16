@@ -229,7 +229,7 @@ export type ScanCorrection = {
   location?: Pick<Location, 'id' | 'name' | 'city'>
 }
 
-export type ReportSection = 'summary' | 'time_per_restaurant' | 'deficiencies' | 'checklist_details'
+export type ReportSection = 'time_per_restaurant' | 'deficiencies' | 'checklist_details'
 
 export type ReportSettings = {
   id: string

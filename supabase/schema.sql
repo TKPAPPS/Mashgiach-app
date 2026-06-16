@@ -246,7 +246,7 @@ CREATE TABLE report_settings (
   enabled        boolean NOT NULL DEFAULT false,
   send_time      text NOT NULL DEFAULT '10:00',          -- HH:MM, Asia/Bangkok
   recipients     text[] NOT NULL DEFAULT '{}',
-  sections       text[] NOT NULL DEFAULT '{summary,time_per_restaurant,deficiencies,checklist_details}',
+  sections       text[] NOT NULL DEFAULT '{time_per_restaurant,deficiencies,checklist_details}',
   last_sent_date date,                                    -- Bangkok date of last send; idempotency guard
   updated_at     timestamptz NOT NULL DEFAULT now()
 );

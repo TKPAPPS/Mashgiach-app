@@ -49,8 +49,7 @@ function esc(s: string): string {
   return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!))
 }
 
-type InspectorAgg = { name: string; entries: number; exits: number; deficiencies: number; notes: number }
-type TimeAgg = { inspName: string; locName: string; minutes: number }
+type LocAgg = { locName: string; entries: number; exits: number; minutes: number }
 type VisitChecksAgg = { time: string; inspName: string; locName: string; items: { name: string; note: string | null }[] }
 
 export async function buildDailyReport(
@@ -79,27 +78,24 @@ export async function buildDailyReport(
   const checks = (checksData ?? []) as VisitCheck[]
   const defs = (defsData ?? []) as DeficiencyReport[]
 
-  // Per-inspector counts.
-  const inspectors = new Map<string, InspectorAgg>()
-  const ensureInsp = (id: string, name: string) => {
-    let a = inspectors.get(id)
-    if (!a) { a = { name, entries: 0, exits: 0, deficiencies: 0, notes: 0 }; inspectors.set(id, a) }
-    return a
-  }
-  for (const l of logs) {
-    if (l.internal_status !== 'success') continue
-    const a = ensureInsp(l.inspector_id, l.inspector?.full_name ?? 'לא ידוע')
-    if (l.action_type === 'entry') a.entries++
-    else if (l.action_type === 'exit') a.exits++
-  }
-  for (const d of defs) {
-    const a = ensureInsp(d.inspector_id, d.inspector?.full_name ?? 'לא ידוע')
-    if (d.report_type === 'deficiency') a.deficiencies++
-    else a.notes++
+  // Per inspector, then per restaurant: entry/exit counts and total time spent.
+  const perInspector = new Map<string, { name: string; locs: Map<string, LocAgg> }>()
+  const ensureLoc = (inspId: string, inspName: string, locId: string, locName: string): LocAgg => {
+    let ins = perInspector.get(inspId)
+    if (!ins) { ins = { name: inspName, locs: new Map() }; perInspector.set(inspId, ins) }
+    let loc = ins.locs.get(locId)
+    if (!loc) { loc = { locName, entries: 0, exits: 0, minutes: 0 }; ins.locs.set(locId, loc) }
+    return loc
   }
 
-  // Time spent per inspector + restaurant: pair each entry with the next exit.
-  const timeAgg = new Map<string, TimeAgg>()
+  for (const l of logs) {
+    if (l.internal_status !== 'success' || !l.location_id) continue
+    const loc = ensureLoc(l.inspector_id, l.inspector?.full_name ?? 'לא ידוע', l.location_id, l.location?.name ?? 'לא ידוע')
+    if (l.action_type === 'entry') loc.entries++
+    else if (l.action_type === 'exit') loc.exits++
+  }
+
+  // Total time per inspector+restaurant: pair each entry with the next exit.
   const openEntry: Record<string, VisitLog> = {}
   for (const l of logs) {
     if (l.internal_status !== 'success' || !l.location_id) continue
@@ -109,9 +105,7 @@ export async function buildDailyReport(
     } else if (l.action_type === 'exit' && openEntry[key]) {
       const mins = Math.round((new Date(l.created_at).getTime() - new Date(openEntry[key].created_at).getTime()) / 60000)
       if (mins >= 0 && mins < 1440) {
-        let t = timeAgg.get(key)
-        if (!t) { t = { inspName: l.inspector?.full_name ?? 'לא ידוע', locName: l.location?.name ?? 'לא ידוע', minutes: 0 }; timeAgg.set(key, t) }
-        t.minutes += mins
+        ensureLoc(l.inspector_id, l.inspector?.full_name ?? 'לא ידוע', l.location_id, l.location?.name ?? 'לא ידוע').minutes += mins
       }
       delete openEntry[key]
     }
@@ -143,48 +137,42 @@ export async function buildDailyReport(
 
   const parts: string[] = []
 
-  if (sections.includes('summary')) {
-    parts.push(`<h2 style="${styles.h2}">סיכום פעילות לפי משגיח</h2>`)
-    if (inspectors.size === 0) {
+  if (sections.includes('time_per_restaurant')) {
+    parts.push(`<h2 style="${styles.h2}">פעילות לפי משגיח ומסעדה</h2>`)
+    if (perInspector.size === 0) {
       parts.push(`<p style="${styles.muted}">לא נרשמה פעילות.</p>`)
     } else {
-      const rows = [...inspectors.values()].sort((a, b) => b.entries - a.entries).map(a => `
-        <tr>
-          <td style="${styles.td}">${esc(a.name)}</td>
-          <td style="${styles.td}">${a.entries}</td>
-          <td style="${styles.td}">${a.exits}</td>
-          <td style="${styles.td}">${a.deficiencies}</td>
-        </tr>`).join('')
-      parts.push(`<table style="${styles.table}">
-        <thead><tr>
-          <th style="${styles.th}">משגיח</th>
-          <th style="${styles.th}">כניסות</th>
-          <th style="${styles.th}">יציאות</th>
-          <th style="${styles.th}">ליקויי כשרות</th>
-        </tr></thead>
-        <tbody>${rows}</tbody></table>`)
-    }
-  }
-
-  if (sections.includes('time_per_restaurant')) {
-    parts.push(`<h2 style="${styles.h2}">זמן שהייה לפי מסעדה</h2>`)
-    const list = [...timeAgg.values()].sort((a, b) => b.minutes - a.minutes)
-    if (list.length === 0) {
-      parts.push(`<p style="${styles.muted}">אין זוגות כניסה/יציאה מלאים ליום זה.</p>`)
-    } else {
-      const rows = list.map(t => `
-        <tr>
-          <td style="${styles.td}">${esc(t.inspName)}</td>
-          <td style="${styles.td}">${esc(t.locName)}</td>
-          <td style="${styles.td}">${fmtMinutes(t.minutes)}</td>
-        </tr>`).join('')
-      parts.push(`<table style="${styles.table}">
-        <thead><tr>
-          <th style="${styles.th}">משגיח</th>
-          <th style="${styles.th}">מסעדה</th>
-          <th style="${styles.th}">זמן שהייה (שעות:דקות)</th>
-        </tr></thead>
-        <tbody>${rows}</tbody></table>`)
+      // One block per mashgiach: every restaurant he was in that day, with total
+      // check-ins, check-outs and total time spent (daily).
+      for (const ins of [...perInspector.values()].sort((a, b) => a.name.localeCompare(b.name, 'he'))) {
+        const locs = [...ins.locs.values()].sort((a, b) => b.minutes - a.minutes)
+        const totalMin = locs.reduce((s, l) => s + l.minutes, 0)
+        const totalEntries = locs.reduce((s, l) => s + l.entries, 0)
+        const totalExits = locs.reduce((s, l) => s + l.exits, 0)
+        const rows = locs.map(l => `
+          <tr>
+            <td style="${styles.td}">${esc(l.locName)}</td>
+            <td style="${styles.td}">${l.entries}</td>
+            <td style="${styles.td}">${l.exits}</td>
+            <td style="${styles.td}">${fmtMinutes(l.minutes)}</td>
+          </tr>`).join('')
+        parts.push(`<p style="margin:18px 0 2px;font-weight:700;text-align:right;direction:rtl;">${esc(ins.name)}</p>
+          <table dir="rtl" style="${styles.table}">
+            <thead><tr>
+              <th style="${styles.th}">מסעדה</th>
+              <th style="${styles.th}">כניסות</th>
+              <th style="${styles.th}">יציאות</th>
+              <th style="${styles.th}">זמן שהייה (שעות:דקות)</th>
+            </tr></thead>
+            <tbody>${rows}
+              <tr>
+                <td style="${styles.td};font-weight:700;background:#f8fafc;">סך הכל</td>
+                <td style="${styles.td};font-weight:700;background:#f8fafc;">${totalEntries}</td>
+                <td style="${styles.td};font-weight:700;background:#f8fafc;">${totalExits}</td>
+                <td style="${styles.td};font-weight:700;background:#f8fafc;">${fmtMinutes(totalMin)}</td>
+              </tr>
+            </tbody></table>`)
+      }
     }
   }
 

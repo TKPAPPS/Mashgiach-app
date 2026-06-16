@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
     if (row.last_sent_date === todayBkk) return NextResponse.json({ status: 'already-sent' })
   }
 
-  const sections = (row.sections?.length ? row.sections : ['summary', 'time_per_restaurant', 'deficiencies', 'checklist_details']) as ReportSection[]
+  const sections = (row.sections?.length ? row.sections : ['time_per_restaurant', 'deficiencies', 'checklist_details']) as ReportSection[]
   const dateStr = bangkokDateStr(now, -1) // yesterday in Bangkok
 
   const { subject, html } = await buildDailyReport(service, dateStr, sections)

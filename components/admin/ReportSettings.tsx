@@ -5,8 +5,7 @@ import { useToast } from '@/components/ui/Toast'
 import type { ReportSection } from '@/lib/supabase/types'
 
 const SECTION_OPTIONS: { id: ReportSection; label: string }[] = [
-  { id: 'summary',             label: 'סיכום פעילות לפי משגיח' },
-  { id: 'time_per_restaurant', label: 'זמן שהייה לפי מסעדה' },
+  { id: 'time_per_restaurant', label: 'פעילות לפי משגיח ומסעדה' },
   { id: 'deficiencies',        label: 'ליקויי כשרות והערות' },
   { id: 'checklist_details',   label: 'פירוט בדיקות שבוצעו' },
 ]

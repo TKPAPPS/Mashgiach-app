@@ -18,7 +18,7 @@ export async function POST() {
   if (!row) return NextResponse.json({ error: 'שגיאה בטעינת ההגדרות' }, { status: 500 })
   if (!row.recipients?.length) return NextResponse.json({ error: 'יש להזין נמענים ולשמור לפני שליחת בדיקה' }, { status: 400 })
 
-  const sections = (row.sections?.length ? row.sections : ['summary', 'time_per_restaurant', 'deficiencies', 'checklist_details']) as ReportSection[]
+  const sections = (row.sections?.length ? row.sections : ['time_per_restaurant', 'deficiencies', 'checklist_details']) as ReportSection[]
   const dateStr = bangkokDateStr(new Date(), -1) // yesterday in Bangkok
 
   const { subject, html } = await buildDailyReport(service, dateStr, sections)
