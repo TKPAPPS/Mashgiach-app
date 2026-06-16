@@ -1,4 +1,7 @@
+const BANGKOK_TZ = 'Asia/Bangkok'
+
 const hebrewDate = new Intl.DateTimeFormat('he-IL', {
+  timeZone: BANGKOK_TZ,
   day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit'
 })
 
@@ -7,7 +10,7 @@ export function formatDateTime(iso: string) {
 }
 
 export function formatDate(iso: string) {
-  return new Intl.DateTimeFormat('he-IL', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(iso))
+  return new Intl.DateTimeFormat('he-IL', { timeZone: BANGKOK_TZ, day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(iso))
 }
 
 export function formatRelative(iso: string) {

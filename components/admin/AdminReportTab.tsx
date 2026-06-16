@@ -42,7 +42,7 @@ type Props = {
 }
 
 function formatDate(d: string) {
-  return new Date(d).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  return new Date(d).toLocaleDateString('he-IL', { timeZone: 'Asia/Bangkok', day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
 function Lightbox({ url, onClose }: { url: string; onClose: () => void }) {
