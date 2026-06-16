@@ -83,6 +83,7 @@ CREATE TABLE visit_logs (
   action_type      text NOT NULL CHECK (action_type IN ('entry', 'exit')),
   device_lat       decimal(10,7),
   device_lng       decimal(10,7),
+  device_accuracy_m double precision,
   distance_meters  int,
   internal_status  text NOT NULL CHECK (internal_status IN ('success','unauthorized','invalid_location','gps_mismatch','error')),
   qr_code_scanned  text,

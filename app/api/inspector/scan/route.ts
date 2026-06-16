@@ -10,8 +10,10 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { qr_code, lat, lng } = await req.json()
+  const { qr_code, lat, lng, accuracy } = await req.json()
   if (!qr_code) return NextResponse.json({ error: 'Missing QR code' }, { status: 400 })
+
+  const accuracy_m = typeof accuracy === 'number' && isFinite(accuracy) && accuracy >= 0 ? accuracy : null
 
   // Look up location by QR code
   const { data: location } = await service
@@ -28,6 +30,7 @@ export async function POST(req: NextRequest) {
       action_type: 'entry',
       device_lat: lat ?? null,
       device_lng: lng ?? null,
+      device_accuracy_m: accuracy_m,
       distance_meters: null,
       internal_status: 'invalid_location',
       qr_code_scanned: qr_code,
@@ -50,6 +53,7 @@ export async function POST(req: NextRequest) {
       action_type: 'entry',
       device_lat: lat ?? null,
       device_lng: lng ?? null,
+      device_accuracy_m: accuracy_m,
       distance_meters: null,
       internal_status: 'unauthorized',
       qr_code_scanned: qr_code,
@@ -75,7 +79,11 @@ export async function POST(req: NextRequest) {
 
   if (lat != null && lng != null && location.lat != null && location.lng != null) {
     distance = Math.round(distanceMeters(lat, lng, location.lat, location.lng))
-    if (distance > GPS_THRESHOLD_METERS) {
+    // Subtract the GPS accuracy radius so a coarse fix cannot false-flag a
+    // mashgiach who is actually on site. A genuinely distant scan (small
+    // accuracy, large distance) still exceeds the threshold.
+    const effective = Math.max(0, distance - (accuracy_m ?? 0))
+    if (effective > GPS_THRESHOLD_METERS) {
       gps_status = 'gps_mismatch'
     }
   }
@@ -86,6 +94,7 @@ export async function POST(req: NextRequest) {
     action_type,
     device_lat: lat ?? null,
     device_lng: lng ?? null,
+    device_accuracy_m: accuracy_m,
     distance_meters: distance,
     internal_status: gps_status,
     qr_code_scanned: qr_code,

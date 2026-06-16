@@ -34,18 +34,20 @@ export default function ScanPage() {
 
     let lat: number | null = null
     let lng: number | null = null
+    let accuracy: number | null = null
     try {
       const pos = await new Promise<GeolocationPosition>((res, rej) =>
-        navigator.geolocation.getCurrentPosition(res, rej, { timeout: 8000, maximumAge: 0 })
+        navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 })
       )
       lat = pos.coords.latitude
       lng = pos.coords.longitude
+      accuracy = pos.coords.accuracy
     } catch {}
 
     const res = await fetch('/api/inspector/scan', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ qr_code: qrCode.trim(), lat, lng }),
+      body: JSON.stringify({ qr_code: qrCode.trim(), lat, lng, accuracy }),
     })
     const data: ScanResult = await res.json()
 

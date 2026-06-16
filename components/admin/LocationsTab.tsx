@@ -9,6 +9,19 @@ import type { Location } from '@/lib/supabase/types'
 import LocationDetailModal from './LocationDetailModal'
 import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react'
 
+type PinSuggestion = {
+  id: string
+  name: string
+  city: string | null
+  current_lat: number
+  current_lng: number
+  suggested_lat: number
+  suggested_lng: number
+  offset_m: number
+  samples: number
+  spread_m: number
+}
+
 // Extracted to module level so React never remounts it on parent re-render
 function LocationForm({
   loc,
@@ -20,6 +33,26 @@ function LocationForm({
   onSubmit: (e: FormEvent<HTMLFormElement>) => void
 }) {
   const [qr, setQr] = useState(() => loc?.qr_code ?? genQrCode())
+  const [lat, setLat] = useState(() => loc?.lat != null ? String(loc.lat) : '')
+  const [lng, setLng] = useState(() => loc?.lng != null ? String(loc.lng) : '')
+  const [geoLoading, setGeoLoading] = useState(false)
+  const [geoError, setGeoError] = useState('')
+
+  function useCurrentLocation() {
+    if (!navigator.geolocation) { setGeoError('המכשיר אינו תומך באיתור מיקום'); return }
+    setGeoError('')
+    setGeoLoading(true)
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        setLat(pos.coords.latitude.toFixed(7))
+        setLng(pos.coords.longitude.toFixed(7))
+        setGeoLoading(false)
+      },
+      () => { setGeoError('לא ניתן לאתר מיקום. בדוק הרשאות.'); setGeoLoading(false) },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+    )
+  }
+
   return (
     <form id={formId} onSubmit={onSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <input type="hidden" name="status" value={loc?.status ?? 'active'} />
@@ -43,8 +76,20 @@ function LocationForm({
 
       {/* GPS */}
       <div className="fieldRow">
-        <label className="field"><span>קו רוחב (Latitude)</span><input name="lat" type="number" step="any" defaultValue={loc?.lat ?? ''} placeholder="13.7563" /></label>
-        <label className="field"><span>קו אורך (Longitude)</span><input name="lng" type="number" step="any" defaultValue={loc?.lng ?? ''} placeholder="100.5018" /></label>
+        <label className="field"><span>קו רוחב (Latitude)</span><input name="lat" type="number" step="any" value={lat} onChange={e => setLat(e.target.value)} placeholder="13.7563" /></label>
+        <label className="field"><span>קו אורך (Longitude)</span><input name="lng" type="number" step="any" value={lng} onChange={e => setLng(e.target.value)} placeholder="100.5018" /></label>
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: -4 }}>
+        <button type="button" className="button button--ghost button--sm" onClick={useCurrentLocation} disabled={geoLoading}>
+          {geoLoading ? <span className="spinner" /> : <><MapPin size={13} /> השתמש במיקום הנוכחי</>}
+        </button>
+        {lat && lng && (
+          <a href={`https://www.google.com/maps?q=${lat},${lng}`} target="_blank" rel="noopener noreferrer"
+            style={{ fontSize: '.8rem', color: 'var(--primary)' }}>
+            הצג על המפה
+          </a>
+        )}
+        {geoError && <span style={{ fontSize: '.78rem', color: 'var(--danger)' }}>{geoError}</span>}
       </div>
 
       {/* Status (edit only) */}
@@ -94,6 +139,34 @@ export default function LocationsTab({ refreshKey }: Props) {
   const [citySearch, setCitySearch] = useState('')
   const [groupByCity, setGroupByCity] = useState(true)
   const [showInactive, setShowInactive] = useState(false)
+  const [pinOpen, setPinOpen] = useState(false)
+  const [pinLoading, setPinLoading] = useState(false)
+  const [pinSuggestions, setPinSuggestions] = useState<PinSuggestion[]>([])
+  const [applyingId, setApplyingId] = useState<string | null>(null)
+
+  async function openPinReview() {
+    setPinOpen(true)
+    setPinLoading(true)
+    try {
+      const res = await fetch('/api/admin/location-pin-suggestions')
+      const data = await res.json()
+      setPinSuggestions((data.suggestions ?? []) as PinSuggestion[])
+    } catch {
+      setPinSuggestions([])
+    }
+    setPinLoading(false)
+  }
+
+  async function applyPin(s: PinSuggestion) {
+    setApplyingId(s.id)
+    const { error } = await supabase.from('locations')
+      .update({ lat: s.suggested_lat, lng: s.suggested_lng }).eq('id', s.id)
+    if (error) { toast('שגיאה בעדכון המיקום', 'error'); setApplyingId(null); return }
+    toast('המיקום עודכן', 'success')
+    setPinSuggestions(prev => prev.filter(p => p.id !== s.id))
+    setApplyingId(null)
+    load()
+  }
 
   function handleSort(key: typeof sortKey) {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -228,9 +301,14 @@ export default function LocationsTab({ refreshKey }: Props) {
       <div className="card">
         <div className="card__header--inline">
           <div className="card__title">מקומות</div>
-          <button className="button button--primary button--sm" onClick={() => setAddOpen(true)}>
-            <Plus size={15} /> מקום חדש
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="button button--ghost button--sm" onClick={openPinReview}>
+              <MapPin size={15} /> סקירת מיקומי GPS
+            </button>
+            <button className="button button--primary button--sm" onClick={() => setAddOpen(true)}>
+              <Plus size={15} /> מקום חדש
+            </button>
+          </div>
         </div>
         {locations.length > 0 && (
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '0 14px 10px' }}>
@@ -406,6 +484,40 @@ export default function LocationsTab({ refreshKey }: Props) {
       {detailLoc && (
         <LocationDetailModal loc={detailLoc} onClose={() => { setDetailLoc(null); load() }} />
       )}
+
+      {/* GPS pin review */}
+      <Modal open={pinOpen} onClose={() => setPinOpen(false)} title="סקירת מיקומי GPS">
+        <p style={{ color: 'var(--muted)', fontSize: '.85rem', marginTop: 0 }}>
+          מקומות שבהם המיקום השמור רחוק מהמקום שבו המשגיחים סורקים בפועל. המיקום המוצע מחושב מאשכול הסריקות האחרונות. בדוק על המפה ואשר לעדכון.
+        </p>
+        {pinLoading ? <div className="emptyState"><span className="spinner" /></div> :
+        pinSuggestions.length === 0 ? <div className="emptyState">לא נמצאו מיקומים לתיקון.</div> :
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {pinSuggestions.map(s => (
+            <div key={s.id} style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <div>
+                  <div style={{ fontWeight: 700 }}>{s.name}</div>
+                  <div style={{ fontSize: '.78rem', color: 'var(--muted)' }}>
+                    {s.city ?? 'ללא עיר'} · סטייה {s.offset_m} מ׳ · {s.samples} סריקות
+                  </div>
+                </div>
+                <button className="button button--primary button--sm" onClick={() => applyPin(s)} disabled={applyingId === s.id}>
+                  {applyingId === s.id ? <span className="spinner" /> : 'עדכן מיקום'}
+                </button>
+              </div>
+              <div style={{ display: 'flex', gap: 14, marginTop: 8, fontSize: '.8rem', flexWrap: 'wrap' }}>
+                <a href={`https://www.google.com/maps?q=${s.current_lat},${s.current_lng}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--muted)' }}>
+                  מיקום נוכחי על המפה
+                </a>
+                <a href={`https://www.google.com/maps?q=${s.suggested_lat},${s.suggested_lng}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)' }}>
+                  מיקום מוצע על המפה
+                </a>
+              </div>
+            </div>
+          ))}
+        </div>}
+      </Modal>
     </div>
   )
 }

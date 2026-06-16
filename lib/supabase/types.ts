@@ -51,6 +51,7 @@ export type VisitLog = {
   action_type: ActionType
   device_lat: number | null
   device_lng: number | null
+  device_accuracy_m: number | null
   distance_meters: number | null
   internal_status: VisitStatus
   qr_code_scanned: string | null
