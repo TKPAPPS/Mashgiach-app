@@ -131,12 +131,14 @@ export async function buildDailyReport(
   const hasActivity = logs.length > 0 || checks.length > 0 || defs.length > 0
 
   // ---- Render ----
+  // Gmail and others often ignore dir on <html>, so direction:rtl is set inline
+  // on the container, every table, and every cell (plus dir="rtl" attributes).
   const styles = {
-    table: 'width:100%;border-collapse:collapse;margin:8px 0 18px;font-size:14px;',
-    th: 'text-align:right;padding:8px 10px;background:#f1f5f9;border:1px solid #e2e8f0;font-weight:700;',
-    td: 'text-align:right;padding:8px 10px;border:1px solid #e2e8f0;',
-    h2: 'font-size:16px;margin:22px 0 4px;color:#0f172a;',
-    muted: 'color:#64748b;font-size:13px;',
+    table: 'width:100%;border-collapse:collapse;margin:8px 0 18px;font-size:14px;direction:rtl;',
+    th: 'text-align:right;padding:8px 10px;background:#f1f5f9;border:1px solid #e2e8f0;font-weight:700;direction:rtl;',
+    td: 'text-align:right;padding:8px 10px;border:1px solid #e2e8f0;direction:rtl;',
+    h2: 'font-size:16px;margin:22px 0 4px;color:#0f172a;text-align:right;direction:rtl;',
+    muted: 'color:#64748b;font-size:13px;text-align:right;direction:rtl;',
   }
 
   const parts: string[] = []
@@ -222,8 +224,8 @@ export async function buildDailyReport(
             <td style="${styles.td}">${esc(i.name)}</td>
             <td style="${styles.td}">${esc(i.note ?? '')}</td>
           </tr>`).join('')
-        parts.push(`<p style="margin:14px 0 2px;font-weight:700;">${esc(v.locName)} - ${esc(v.inspName)} <span style="${styles.muted}">(${fmtTime(v.time)})</span></p>
-          <table style="${styles.table}">
+        parts.push(`<p dir="rtl" style="margin:14px 0 2px;font-weight:700;text-align:right;direction:rtl;">${esc(v.locName)} - ${esc(v.inspName)} <span style="${styles.muted}">(${fmtTime(v.time)})</span></p>
+          <table dir="rtl" style="${styles.table}">
             <thead><tr><th style="${styles.th}">בדיקה</th><th style="${styles.th}">הערה</th></tr></thead>
             <tbody>${items}</tbody></table>`)
       }
@@ -232,9 +234,9 @@ export async function buildDailyReport(
 
   const subject = `דוח יומי - ${fmtHebrewDate(dateStr)}`
   const html = `<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8"></head>
-<body style="margin:0;background:#f8fafc;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
-  <div style="max-width:760px;margin:0 auto;padding:24px;">
-    <h1 style="font-size:20px;margin:0 0 2px;">דוח פעילות יומי</h1>
+<body dir="rtl" style="margin:0;background:#f8fafc;font-family:Arial,Helvetica,sans-serif;color:#0f172a;direction:rtl;">
+  <div dir="rtl" style="max-width:760px;margin:0 auto;padding:24px;direction:rtl;text-align:right;">
+    <h1 style="font-size:20px;margin:0 0 2px;text-align:right;direction:rtl;">דוח פעילות יומי</h1>
     <p style="${styles.muted};margin:0 0 14px;">${fmtHebrewDate(dateStr)} (שעון בנגקוק)</p>
     ${hasActivity ? parts.join('\n') : `<p style="${styles.muted}">לא נרשמה פעילות ביום זה.</p>`}
     <p style="${styles.muted};margin-top:24px;border-top:1px solid #e2e8f0;padding-top:12px;">הופק אוטומטית על ידי מערכת Mashgiach.</p>
