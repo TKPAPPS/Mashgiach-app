@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { PERSIST_COOKIE_OPTIONS } from '@/lib/supabase/cookieOptions'
 
 export async function proxy(request: NextRequest) {
   // Dev bypass: skip auth when NEXT_PUBLIC_DEV_BYPASS=true
@@ -15,6 +16,7 @@ export async function proxy(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      cookieOptions: PERSIST_COOKIE_OPTIONS,
       cookies: {
         getAll() { return request.cookies.getAll() },
         setAll(cookiesToSet) {

@@ -78,15 +78,28 @@ export default function ScanPage() {
       const scanner = new Html5Qrcode('qr-reader')
       scannerRef.current = scanner as unknown as { stop: () => Promise<void> }
 
+      const config = { fps: 10, qrbox: { width: 240, height: 240 } }
+      const onScan = (text: string) => { doScan(text) }
+      const noop = () => {}
+
+      // Always prefer the rear camera. `exact` forces it where one exists; the
+      // soft hint and label-based enumeration are fallbacks for devices that
+      // ignore `exact` or have no environment-facing camera (e.g. laptops).
       try {
-        await scanner.start(
-          { facingMode: 'environment' },
-          { fps: 10, qrbox: { width: 240, height: 240 } },
-          (text: string) => { doScan(text) },
-          () => {}
-        )
+        await scanner.start({ facingMode: { exact: 'environment' } }, config, onScan, noop)
       } catch {
-        setCameraError('לא ניתן לגשת למצלמה. אנא אפשר גישה למצלמה בהגדרות הדפדפן.')
+        try {
+          await scanner.start({ facingMode: 'environment' }, config, onScan, noop)
+        } catch {
+          try {
+            const cameras = await Html5Qrcode.getCameras()
+            const rear = cameras.find(c => /back|rear|environment/i.test(c.label)) ?? cameras[cameras.length - 1]
+            if (!rear) throw new Error('no camera')
+            await scanner.start(rear.id, config, onScan, noop)
+          } catch {
+            setCameraError('לא ניתן לגשת למצלמה. אנא אפשר גישה למצלמה בהגדרות הדפדפן.')
+          }
+        }
       }
     }
 

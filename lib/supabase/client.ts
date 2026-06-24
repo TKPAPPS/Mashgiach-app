@@ -1,6 +1,7 @@
 'use client'
 import { createBrowserClient } from '@supabase/ssr'
 import type { Database } from './types'
+import { PERSIST_COOKIE_OPTIONS } from './cookieOptions'
 
 function createDevMockClient() {
   // A properly thenable builder for all query chains
@@ -61,6 +62,7 @@ export function createClient() {
   }
   return createBrowserClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookieOptions: PERSIST_COOKIE_OPTIONS }
   )
 }
