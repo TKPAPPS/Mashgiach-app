@@ -58,6 +58,8 @@ CREATE TABLE locations (
   kashrus_procedure          text,
   kashrus_procedure_file_url text,
   kashrus_certificate_url    text,
+  opening_hours              text,   -- work & kashrut procedure
+  inspector_arrival_time     text,   -- work & kashrut procedure
   created_at                 timestamptz DEFAULT now(),
   updated_at                 timestamptz DEFAULT now()
 );
@@ -103,6 +105,7 @@ CREATE TABLE checklist_items (
   -- location that has no items of its own.
   location_id uuid REFERENCES locations(id) ON DELETE CASCADE,
   frequency   text NOT NULL DEFAULT 'daily' CHECK (frequency IN ('daily','weekly')),
+  procedure_note text,   -- per-check guidance shown in the work & kashrut procedure
   created_at  timestamptz DEFAULT now()
 );
 
@@ -218,6 +221,18 @@ CREATE TABLE documents (
 );
 
 -- -------------------------------------------------------
+-- PROCEDURE PHOTOS (oven/appliance photos for the work & kashrut procedure)
+-- -------------------------------------------------------
+CREATE TABLE procedure_photos (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  location_id uuid NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+  photo_path  text NOT NULL,
+  note        text,
+  sort_order  int NOT NULL DEFAULT 0,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+
+-- -------------------------------------------------------
 -- SCAN CORRECTIONS (inspector "forgot to scan out" requests)
 -- On approval, apply_scan_correction() creates the entry+exit visit_logs at the
 -- estimated times (flagged visit_logs.manual_correction = true).
@@ -226,7 +241,10 @@ CREATE TABLE scan_corrections (
   id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   inspector_id uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   location_id  uuid NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
-  est_entry    timestamptz NOT NULL,
+  -- missed_checkout: entry already exists, only est_exit is given (est_entry NULL).
+  -- missing_visit: both estimated times are given.
+  correction_type text NOT NULL DEFAULT 'missing_visit' CHECK (correction_type IN ('missed_checkout','missing_visit')),
+  est_entry    timestamptz,
   est_exit     timestamptz NOT NULL,
   note         text,
   status       text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','denied')),
@@ -267,6 +285,8 @@ ALTER TABLE gps_alerts          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE push_subscriptions  ENABLE ROW LEVEL SECURITY;
 -- documents: RLS on with no policies; all access is via the admin service-role route.
 ALTER TABLE documents           ENABLE ROW LEVEL SECURITY;
+-- procedure_photos: RLS on with no policies; access via service-role routes only.
+ALTER TABLE procedure_photos    ENABLE ROW LEVEL SECURITY;
 -- report_settings: RLS on with no policies; all access is via the admin/cron service-role routes.
 ALTER TABLE report_settings     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE scan_corrections    ENABLE ROW LEVEL SECURITY;
@@ -340,3 +360,4 @@ CREATE POLICY "sc_self_select"        ON scan_corrections FOR SELECT TO authenti
 --   "kashrus-procedures" (private) - kashrus procedure files
 --   "admin-reports"      (private) - admin location report attachments
 --   "documents"          (private) - standalone documents/contracts library
+--   "procedure-photos"   (private) - oven/appliance photos for procedures

@@ -239,6 +239,25 @@ City is free text on `locations` (no cities table). `/api/admin/cities` lets an 
 - `kashrus-procedures` — private
 - `admin-reports` — private; signed URLs per attachment (1-hour expiry)
 - `documents` — private; standalone documents/contracts library (signed URLs, 1-hour expiry)
+- `procedure-photos` — private; oven/appliance photos for the work & kashrut procedure (signed URLs)
+
+## Inspector photo uploads (camera + gallery)
+
+All inspector photo pickers use the shared `components/ui/PhotoAddControl.tsx`: two buttons, "צלם" (a `capture="environment"` input) and "מהגלריה" (no `capture`). Used by the visit checklist, deficiency report (post-submit, via `report_photos`), and the location visit photo modal. Don't reintroduce a single camera-only input.
+
+## Inspector scan UX
+
+- The scan camera frame is a CSS square (`.scanBox` + forced `#qr-reader video { object-fit: cover }` in globals.css).
+- After a successful scan there is no full success screen: a toast fires (persists across navigation via the inspector-layout Toast provider) and the app redirects — check-in to `/inspector/location/{id}` (its procedure), check-out to the checklist if one exists else home.
+- The home screen has ONE floating scan button (`.scanFab`), not a per-restaurant button. Cards show status (בפנים/בחוץ) and tap to the location page.
+
+## Scan corrections: two types
+
+`scan_corrections.correction_type` is `missed_checkout` or `missing_visit` (`est_entry` is nullable). `apply_scan_correction` branches: `missed_checkout` creates ONLY the exit log linked to the existing open entry (errors if none open); `missing_visit` creates both entry and exit (legacy rows default to this). Inspector form has a mode selector; admin `ScanCorrectionsTab` shows the type.
+
+## Work & kashrut procedure (per restaurant)
+
+Admin builds it in the "נוהל עבודה" inner tab of `LocationDetailModal`: `locations.opening_hours` + `inspector_arrival_time`, oven/appliance photos with a note each (`procedure_photos` table + `procedure-photos` bucket, via `/api/admin/procedure-photos`), and a `procedure_note` per `checklist_items` row. General text reuses `locations.kashrus_procedure`. Inspector sees it on the location page (and right after check-in) via `/api/inspector/procedure`, which assembles fields + per-location checklist (global fallback) + photos with signed URLs.
 
 ## Contract URL handling
 
