@@ -35,6 +35,7 @@ export type Location = {
   kashrus_certificate_url: string | null
   opening_hours: string | null
   inspector_arrival_time: string | null
+  working_days: string | null
   created_at: string
   updated_at: string
 }
@@ -207,6 +208,14 @@ export type ProcedurePhoto = {
   created_at: string
 }
 
+export type ProcedureCheck = {
+  id: string
+  location_id: string
+  checklist_item_id: string
+  note: string | null
+  created_at: string
+}
+
 export type GpsAlert = {
   id: string
   visit_log_id: string | null
@@ -266,7 +275,7 @@ export type Database = {
   public: {
     Tables: {
       profiles:            TableDef<Profile, Omit<Profile,'created_at'|'updated_at'|'vacation_days_remaining'|'start_date'|'contract_url'> & { vacation_days_remaining?: number; start_date?: string | null; contract_url?: string | null }, Partial<Profile>>
-      locations:           TableDef<Location, Omit<Location,'id'|'created_at'|'updated_at'|'opening_hours'|'inspector_arrival_time'> & { id?: string; opening_hours?: string | null; inspector_arrival_time?: string | null }, Partial<Location>>
+      locations:           TableDef<Location, Omit<Location,'id'|'created_at'|'updated_at'|'opening_hours'|'inspector_arrival_time'|'working_days'> & { id?: string; opening_hours?: string | null; inspector_arrival_time?: string | null; working_days?: string | null }, Partial<Location>>
       inspector_locations: TableDef<InspectorLocation, Omit<InspectorLocation,'id'|'created_at'>, Partial<InspectorLocation>>
       visit_logs:          TableDef<VisitLog, Omit<VisitLog,'id'|'created_at'|'inspector'|'location'>, Partial<Omit<VisitLog,'inspector'|'location'>>>
       checklist_items:     TableDef<ChecklistItem, Omit<ChecklistItem,'id'|'created_at'|'location_id'|'frequency'|'procedure_note'> & { id?: string; location_id?: string | null; frequency?: ChecklistFrequency; procedure_note?: string | null }, Partial<ChecklistItem>>
@@ -283,6 +292,7 @@ export type Database = {
       push_subscriptions:        TableDef<{ id: string; user_id: string; endpoint: string; p256dh: string; auth: string; created_at: string }, { user_id: string; endpoint: string; p256dh: string; auth: string }, { user_id?: string; endpoint?: string; p256dh?: string; auth?: string }>
       documents:                 TableDef<Document, Omit<Document,'id'|'created_at'>, Partial<Document>>
       procedure_photos:          TableDef<ProcedurePhoto, Omit<ProcedurePhoto,'id'|'created_at'>, Partial<ProcedurePhoto>>
+      procedure_checks:          TableDef<ProcedureCheck, Omit<ProcedureCheck,'id'|'created_at'>, Partial<ProcedureCheck>>
       report_settings:           TableDef<ReportSettings, Partial<Omit<ReportSettings,'id'|'updated_at'>>, Partial<Omit<ReportSettings,'id'>>>
       scan_corrections:          TableDef<ScanCorrection, Omit<ScanCorrection,'id'|'created_at'|'status'|'correction_type'|'admin_notes'|'reviewed_by'|'reviewed_at'|'entry_log_id'|'exit_log_id'|'inspector'|'location'> & { correction_type?: ScanCorrectionType }, Partial<Omit<ScanCorrection,'inspector'|'location'>>>
     }

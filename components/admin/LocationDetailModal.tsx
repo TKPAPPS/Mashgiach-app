@@ -5,7 +5,7 @@ import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import { formatDateTime } from '@/lib/utils/format'
 import type { Location, VisitLog, DeficiencyReport, VisitCheck, Profile, ChecklistItem } from '@/lib/supabase/types'
-import { Upload, Trash2, ExternalLink } from 'lucide-react'
+import { Upload, Trash2, ExternalLink, X } from 'lucide-react'
 
 type InnerTab = 'info' | 'kashrus' | 'certificate' | 'procedure' | 'inspectors' | 'deficiencies' | 'checks' | 'visits'
 type ProcPhoto = { id: string; note: string | null; url: string | null }
@@ -27,6 +27,9 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
   const [procLoaded, setProcLoaded] = useState(false)
   const [procPhotos, setProcPhotos] = useState<ProcPhoto[]>([])
   const [procItems, setProcItems] = useState<ChecklistItem[]>([])
+  // checklist_item_id -> { id, note } for the checks ticked into this location's procedure
+  const [procChecks, setProcChecks] = useState<Record<string, { id: string; note: string | null }>>({})
+  const [workingDays, setWorkingDays] = useState<string[]>([])
   const [procNoteEdits, setProcNoteEdits] = useState<Record<string, string>>({})
   const [newPhotoNote, setNewPhotoNote] = useState('')
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
@@ -37,7 +40,7 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
   async function loadProcedure() {
     const res = await fetch(`/api/admin/procedure-photos?location_id=${loc.id}`)
     setProcPhotos(res.ok ? await res.json() : [])
-    // The location's own checklist items (fallback to global), to attach per-check notes.
+    // Candidate checks = the location's own items (fallback to global).
     const { data: own } = await supabase.from('checklist_items').select('*').eq('location_id', loc.id).order('sort_order')
     let items = (own ?? []) as ChecklistItem[]
     if (items.length === 0) {
@@ -45,6 +48,12 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
       items = (globals ?? []) as ChecklistItem[]
     }
     setProcItems(items)
+    // Which of those are ticked into this location's procedure (+ note).
+    const { data: pc } = await supabase.from('procedure_checks').select('id,checklist_item_id,note').eq('location_id', loc.id)
+    const map: Record<string, { id: string; note: string | null }> = {}
+    for (const r of pc ?? []) map[r.checklist_item_id] = { id: r.id, note: r.note }
+    setProcChecks(map)
+    setWorkingDays(location.working_days ? location.working_days.split(',').filter(Boolean) : [])
     setProcLoaded(true)
   }
 
@@ -55,10 +64,35 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
     const { error, data } = await supabase.from('locations').update({
       opening_hours: (fd.get('opening_hours') as string) || null,
       inspector_arrival_time: (fd.get('inspector_arrival_time') as string) || null,
+      working_days: workingDays.length ? workingDays.join(',') : null,
     }).eq('id', loc.id).select().single()
     if (error) toast('שגיאה בשמירה', 'error')
     else { toast('הנוהל נשמר', 'success'); setLocation(data as Location) }
     setSaving(false)
+  }
+
+  async function toggleProcCheck(itemId: string) {
+    const existing = procChecks[itemId]
+    if (existing) {
+      const { error } = await supabase.from('procedure_checks').delete().eq('id', existing.id)
+      if (error) { toast('שגיאה', 'error'); return }
+      setProcChecks(prev => { const n = { ...prev }; delete n[itemId]; return n })
+    } else {
+      const { data, error } = await supabase.from('procedure_checks')
+        .insert({ location_id: loc.id, checklist_item_id: itemId, note: null }).select('id,note').single()
+      if (error) { toast('שגיאה', 'error'); return }
+      setProcChecks(prev => ({ ...prev, [itemId]: { id: data.id, note: data.note } }))
+    }
+  }
+
+  async function saveProcCheckNote(itemId: string) {
+    const row = procChecks[itemId]; if (!row) return
+    const note = procNoteEdits[`check-${itemId}`] ?? ''
+    const { error } = await supabase.from('procedure_checks').update({ note: note || null }).eq('id', row.id)
+    if (error) { toast('שגיאה', 'error'); return }
+    setProcChecks(prev => ({ ...prev, [itemId]: { ...row, note: note || null } }))
+    setProcNoteEdits(prev => { const n = { ...prev }; delete n[`check-${itemId}`]; return n })
+    toast('ההערה נשמרה', 'success')
   }
 
   async function uploadProcedurePhoto(file: File) {
@@ -90,15 +124,6 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
       setProcNoteEdits(prev => { const n = { ...prev }; delete n[`photo-${id}`]; return n })
       toast('ההערה נשמרה', 'success')
     } else toast('שגיאה', 'error')
-  }
-
-  async function saveCheckProcNote(id: string) {
-    const note = procNoteEdits[`check-${id}`] ?? ''
-    const { error } = await supabase.from('checklist_items').update({ procedure_note: note || null }).eq('id', id)
-    if (error) { toast('שגיאה', 'error'); return }
-    setProcItems(prev => prev.map(i => i.id === id ? { ...i, procedure_note: note || null } : i))
-    setProcNoteEdits(prev => { const n = { ...prev }; delete n[`check-${id}`]; return n })
-    toast('ההערה נשמרה', 'success')
   }
 
   async function loadAll() {
@@ -244,6 +269,22 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
               <label className="field"><span>שעות פתיחה</span><input name="opening_hours" defaultValue={location.opening_hours ?? ''} placeholder="08:00-22:00" /></label>
               <label className="field"><span>שעת הגעת משגיח נדרשת</span><input name="inspector_arrival_time" defaultValue={location.inspector_arrival_time ?? ''} placeholder="08:30" /></label>
             </div>
+            <div className="field">
+              <span>ימי עבודה</span>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {['א','ב','ג','ד','ה','ו','ש'].map(d => {
+                  const on = workingDays.includes(d)
+                  return (
+                    <button key={d} type="button"
+                      onClick={() => setWorkingDays(prev => on ? prev.filter(x => x !== d) : [...prev, d])}
+                      className={`badge ${on ? 'badge--success' : 'badge--muted'}`}
+                      style={{ cursor: 'pointer', border: 'none', minWidth: 30, padding: '6px 0', fontSize: '.85rem' }}>
+                      {d}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
               <button className="button button--primary" type="submit" disabled={saving}>שמור</button>
             </div>
@@ -257,10 +298,16 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10, marginBottom: 12 }}>
                 {procPhotos.map(p => (
                   <div key={p.id} className="card" style={{ margin: 0, padding: 8 }}>
-                    {p.url && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={p.url} alt="" style={{ width: '100%', aspectRatio: '4/3', objectFit: 'cover', borderRadius: 8 }} />
-                    )}
+                    <div style={{ position: 'relative' }}>
+                      {p.url && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={p.url} alt="" style={{ width: '100%', aspectRatio: '4/3', objectFit: 'cover', borderRadius: 8 }} />
+                      )}
+                      <button type="button" title="מחק תמונה" onClick={() => deleteProcedurePhoto(p.id)}
+                        style={{ position: 'absolute', top: 6, insetInlineEnd: 6, background: 'rgba(0,0,0,.6)', border: 'none', borderRadius: 6, color: '#fff', width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                        <X size={15} />
+                      </button>
+                    </div>
                     <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginTop: 6 }}>
                       <input
                         value={procNoteEdits[`photo-${p.id}`] ?? (p.note ?? '')}
@@ -287,26 +334,37 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
             </div>
           </div>
 
-          {/* Per-check procedure notes */}
+          {/* Procedure checks: tick which checks apply at this location (+ note). */}
           <div>
-            <div style={{ fontWeight: 700, fontSize: '.9rem', marginBottom: 8 }}>הערות נוהל לבדיקות הכשרות</div>
+            <div style={{ fontWeight: 700, fontSize: '.9rem', marginBottom: 4 }}>בדיקות כשרות לנוהל</div>
+            <p style={{ fontSize: '.76rem', color: 'var(--muted)', margin: '0 0 8px' }}>סמן את הבדיקות הרלוונטיות למקום זה. המשגיח יראה רק את המסומנות.</p>
             {procItems.length === 0 ? <p className="textSm textMuted">אין פריטי בדיקה למקום זה.</p> :
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {procItems.map(item => (
-                <div key={item.id} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <span style={{ flex: '0 0 40%', fontSize: '.84rem' }}>
-                    {item.name} <span className="badge badge--muted" style={{ fontSize: '.66rem' }}>{item.frequency === 'weekly' ? 'שבועי' : 'יומי'}</span>
-                  </span>
-                  <input
-                    value={procNoteEdits[`check-${item.id}`] ?? (item.procedure_note ?? '')}
-                    onChange={e => setProcNoteEdits(prev => ({ ...prev, [`check-${item.id}`]: e.target.value }))}
-                    placeholder="הערת נוהל..."
-                    style={{ flex: 1, border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '4px 8px', fontSize: '.8rem' }} />
-                  {procNoteEdits[`check-${item.id}`] !== undefined && procNoteEdits[`check-${item.id}`] !== (item.procedure_note ?? '') && (
-                    <button className="button button--primary button--sm" style={{ padding: '4px 8px', fontSize: '.72rem' }} onClick={() => saveCheckProcNote(item.id)}>שמור</button>
-                  )}
-                </div>
-              ))}
+              {procItems.map(item => {
+                const checkedRow = procChecks[item.id]
+                const checked = !!checkedRow
+                return (
+                  <div key={item.id} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer', fontSize: '.84rem' }}>
+                      <input type="checkbox" checked={checked} onChange={() => toggleProcCheck(item.id)} style={{ accentColor: 'var(--primary)' }} />
+                      {item.name}
+                      <span className="badge badge--muted" style={{ fontSize: '.66rem' }}>{item.frequency === 'weekly' ? 'שבועי' : 'יומי'}</span>
+                    </label>
+                    {checked && (
+                      <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginInlineStart: 26 }}>
+                        <input
+                          value={procNoteEdits[`check-${item.id}`] ?? (checkedRow.note ?? '')}
+                          onChange={e => setProcNoteEdits(prev => ({ ...prev, [`check-${item.id}`]: e.target.value }))}
+                          placeholder="הערת נוהל (אופציונלי)..."
+                          style={{ flex: 1, border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '4px 8px', fontSize: '.8rem' }} />
+                        {procNoteEdits[`check-${item.id}`] !== undefined && procNoteEdits[`check-${item.id}`] !== (checkedRow.note ?? '') && (
+                          <button className="button button--primary button--sm" style={{ padding: '4px 8px', fontSize: '.72rem' }} onClick={() => saveProcCheckNote(item.id)}>שמור</button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>}
           </div>
         </div>

@@ -127,6 +127,7 @@ export default function InspectorLocationPage({ params }: { params: Promise<{ id
   const [photoCounts, setPhotoCounts] = useState<Record<string, number>>({})
   const [photoModalVisitId, setPhotoModalVisitId] = useState<string | null>(null)
   const [procPhotos, setProcPhotos] = useState<{ id: string; note: string | null; url: string | null }[]>([])
+  const [procChecks, setProcChecks] = useState<{ id: string; name: string; frequency: string; note: string | null }[]>([])
 
   async function loadAll() {
     const { data: { user } } = await supabase.auth.getUser()
@@ -159,7 +160,7 @@ export default function InspectorLocationPage({ params }: { params: Promise<{ id
     // Procedure appliance photos (signed URLs from the server).
     fetch(`/api/inspector/procedure?location_id=${id}`)
       .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.photos) setProcPhotos(d.photos) })
+      .then(d => { if (d) { setProcPhotos(d.photos ?? []); setProcChecks(d.checks ?? []) } })
       .catch(() => {})
 
     // Batch-fetch photo counts (single query)
@@ -214,13 +215,30 @@ export default function InspectorLocationPage({ params }: { params: Promise<{ id
           </div>
         </div>
 
-        {/* Work & kashrut procedure: hours, required arrival, appliance photos */}
-        {(location.opening_hours || location.inspector_arrival_time || procPhotos.length > 0) && (
+        {/* Work & kashrut procedure: hours, days, required arrival, checks, appliance photos */}
+        {(location.opening_hours || location.inspector_arrival_time || location.working_days || procChecks.length > 0 || procPhotos.length > 0) && (
           <div className="card">
             <div className="card__header"><div className="card__title">נוהל עבודה וכשרות</div></div>
             <div className="card__body" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {location.opening_hours && <div><span className="textMuted textSm">שעות פתיחה: </span>{location.opening_hours}</div>}
+              {location.working_days && <div><span className="textMuted textSm">ימי עבודה: </span>{location.working_days.split(',').filter(Boolean).join(', ')}</div>}
               {location.inspector_arrival_time && <div><span className="textMuted textSm">שעת הגעה נדרשת: </span>{location.inspector_arrival_time}</div>}
+              {procChecks.length > 0 && (
+                <div>
+                  <div className="textMuted textSm" style={{ marginBottom: 6 }}>בדיקות כשרות לביצוע</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {procChecks.map(c => (
+                      <div key={c.id} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <div style={{ fontSize: '.86rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                          {c.name}
+                          <span className="badge badge--muted" style={{ fontSize: '.64rem' }}>{c.frequency === 'weekly' ? 'שבועי' : 'יומי'}</span>
+                        </div>
+                        {c.note && <div style={{ fontSize: '.78rem', color: 'var(--muted)', lineHeight: 1.4 }}>{c.note}</div>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {procPhotos.length > 0 && (
                 <div>
                   <div className="textMuted textSm" style={{ marginBottom: 6 }}>תנורים ומכשירי חשמל</div>
@@ -268,19 +286,12 @@ export default function InspectorLocationPage({ params }: { params: Promise<{ id
             <div className="card__body">
               <div className="checklistWrap">
                 {checklistItems.map(item => (
-                  <div key={item.id} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <div className="checkItem" style={{ opacity: 0.85, cursor: 'default' }}>
-                      <input type="checkbox" disabled style={{ accentColor: 'var(--primary)' }} />
-                      <span>{item.name}</span>
-                      <span className="badge badge--muted" style={{ fontSize: '.66rem', marginInlineStart: 'auto' }}>
-                        {item.frequency === 'weekly' ? 'שבועי' : 'יומי'}
-                      </span>
-                    </div>
-                    {item.procedure_note && (
-                      <div style={{ fontSize: '.78rem', color: 'var(--muted)', marginInlineStart: 26, lineHeight: 1.4 }}>
-                        {item.procedure_note}
-                      </div>
-                    )}
+                  <div key={item.id} className="checkItem" style={{ opacity: 0.85, cursor: 'default' }}>
+                    <input type="checkbox" disabled style={{ accentColor: 'var(--primary)' }} />
+                    <span>{item.name}</span>
+                    <span className="badge badge--muted" style={{ fontSize: '.66rem', marginInlineStart: 'auto' }}>
+                      {item.frequency === 'weekly' ? 'שבועי' : 'יומי'}
+                    </span>
                   </div>
                 ))}
               </div>
