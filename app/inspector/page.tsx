@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { MapPin, QrCode, AlertTriangle, Calendar, User, LogOut, Trash2, History } from 'lucide-react'
+import { MapPin, QrCode, AlertTriangle, Calendar, User, LogOut, Trash2, History, Clock } from 'lucide-react'
 import Image from 'next/image'
 import { formatRelative, formatDate } from '@/lib/utils/format'
 import PhotoAddControl from '@/components/ui/PhotoAddControl'
@@ -18,7 +18,7 @@ export default function InspectorHome() {
   const [userEmail, setUserEmail] = useState<string | null>(null)
   const [locations, setLocations] = useState<LocationWithLastVisit[]>([])
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'home' | 'report' | 'absence' | 'profile'>('home')
+  const [activeTab, setActiveTab] = useState<'home' | 'report' | 'scancorrect' | 'absence' | 'profile'>('home')
 
   useEffect(() => { loadAll() }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -137,13 +137,18 @@ export default function InspectorHome() {
             {loading
               ? <div className="emptyState"><span className="spinner" /></div>
               : <AbsenceForm profile={profile} locations={locations} />}
+          </div>
+        )}
 
-            <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '24px 0 16px' }} />
+        {activeTab === 'scancorrect' && (
+          <div style={{ paddingTop: 8 }}>
             <div style={{ fontWeight: 700, fontSize: '1.05rem', marginBottom: 6 }}>דיווח על תיקון סריקה</div>
             <p style={{ fontSize: '.82rem', color: 'var(--muted)', margin: '0 0 14px' }}>
               שכחת לסרוק יציאה, או ביקור שלא תועד כלל? בחר את סוג הדיווח, מלא את הזמנים המשוערים, והמנהל יאשר.
             </p>
-            {!loading && <ScanCorrectionForm profile={profile} locations={locations} />}
+            {loading
+              ? <div className="emptyState"><span className="spinner" /></div>
+              : <ScanCorrectionForm profile={profile} locations={locations} />}
           </div>
         )}
 
@@ -157,6 +162,7 @@ export default function InspectorHome() {
         {[
           { id: 'home', label: 'בית', Icon: MapPin },
           { id: 'report', label: 'ליקוי', Icon: AlertTriangle },
+          { id: 'scancorrect', label: 'תיקון סריקה', Icon: Clock },
           { id: 'absence', label: 'היעדרות', Icon: Calendar },
           { id: 'profile', label: 'פרופיל', Icon: User },
         ].map(({ id, label, Icon }) => (
@@ -180,6 +186,25 @@ function ReportForm({ profile, locations }: { profile: Profile | null; locations
   const [reportId, setReportId] = useState<string | null>(null)
   const [photos, setPhotos] = useState<ReportPhoto[]>([])
   const [uploading, setUploading] = useState(false)
+  // Images picked while still filling the form (no report_id yet); uploaded on submit.
+  const [pending, setPending] = useState<{ file: File; url: string }[]>([])
+
+  function addPending(files: FileList | null) {
+    if (!files) return
+    setPending(prev => {
+      const room = 10 - prev.length
+      const add = Array.from(files).slice(0, room).map(file => ({ file, url: URL.createObjectURL(file) }))
+      return [...prev, ...add]
+    })
+  }
+
+  function removePending(idx: number) {
+    setPending(prev => {
+      const target = prev[idx]
+      if (target) URL.revokeObjectURL(target.url)
+      return prev.filter((_, i) => i !== idx)
+    })
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -195,11 +220,26 @@ function ReportForm({ profile, locations }: { profile: Profile | null; locations
         description: fd.get('description') as string,
       }),
     })
-    setSaving(false)
-    if (!res.ok) { setError(true); setTimeout(() => setError(false), 4000); return }
+    if (!res.ok) { setSaving(false); setError(true); setTimeout(() => setError(false), 4000); return }
     const data = await res.json()
-    setReportId(data.report_id ?? null)
-    setPhotos([])
+    const newReportId: string | null = data.report_id ?? null
+
+    // Upload any images the inspector attached while filling the form.
+    const uploaded: ReportPhoto[] = []
+    if (newReportId && pending.length > 0) {
+      for (const { file } of pending) {
+        const pf = new FormData()
+        pf.append('report_id', newReportId)
+        pf.append('file', file)
+        const pres = await fetch('/api/inspector/report-photos', { method: 'POST', body: pf })
+        if (pres.ok) uploaded.push(await pres.json())
+      }
+      pending.forEach(p => URL.revokeObjectURL(p.url))
+      setPending([])
+    }
+    setSaving(false)
+    setReportId(newReportId)
+    setPhotos(uploaded)
   }
 
   async function handleFiles(files: FileList | null) {
@@ -294,6 +334,27 @@ function ReportForm({ profile, locations }: { profile: Profile | null; locations
         <span>פירוט *</span>
         <textarea name="description" required rows={5} placeholder="תאר את הליקוי או ההערה..." />
       </label>
+
+      {/* Attach images as part of the report (uploaded on submit) */}
+      <div className="field">
+        <span>תמונות ({pending.length}/10)</span>
+        {pending.length > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 8 }}>
+            {pending.map((p, i) => (
+              <div key={p.url} style={{ position: 'relative', aspectRatio: '1', borderRadius: 8, overflow: 'hidden', background: 'var(--border)' }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={p.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <button type="button" onClick={() => removePending(i)}
+                  style={{ position: 'absolute', top: 4, insetInlineEnd: 4, background: 'rgba(0,0,0,.55)', border: 'none', borderRadius: 6, color: '#fff', width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {pending.length < 10 && <PhotoAddControl onFiles={addPending} uploading={false} remaining={10 - pending.length} />}
+      </div>
+
       <button className="button button--primary" type="submit" disabled={saving}>
         {saving ? <span className="spinner" /> : 'שלח דיווח'}
       </button>
