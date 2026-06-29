@@ -281,7 +281,7 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
                 style={{ flex: 1, minWidth: 160, border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '7px 10px', fontSize: '.82rem' }} />
               <label className="button button--ghost button--sm" style={{ cursor: 'pointer', gap: 6 }}>
                 {uploadingPhoto ? <span className="spinner" style={{ width: 14, height: 14 }} /> : <Upload size={14} />} העלה תמונה
-                <input type="file" accept="image/*" style={{ display: 'none' }}
+                <input type="file" accept="image/*" disabled={uploadingPhoto} style={{ display: 'none' }}
                   onChange={e => { const f = e.target.files?.[0]; if (f) uploadProcedurePhoto(f); e.target.value = '' }} />
               </label>
             </div>

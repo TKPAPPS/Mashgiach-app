@@ -239,7 +239,7 @@ City is free text on `locations` (no cities table). `/api/admin/cities` lets an 
 - `kashrus-procedures` — private
 - `admin-reports` — private; signed URLs per attachment (1-hour expiry)
 - `documents` — private; standalone documents/contracts library (signed URLs, 1-hour expiry)
-- `procedure-photos` — private; oven/appliance photos for the work & kashrut procedure (signed URLs)
+- `procedure-photos` (private): oven/appliance photos for the work & kashrut procedure (signed URLs)
 
 ## Inspector photo uploads (camera + gallery)
 
@@ -248,7 +248,7 @@ All inspector photo pickers use the shared `components/ui/PhotoAddControl.tsx`: 
 ## Inspector scan UX
 
 - The scan camera frame is a CSS square (`.scanBox` + forced `#qr-reader video { object-fit: cover }` in globals.css).
-- After a successful scan there is no full success screen: a toast fires (persists across navigation via the inspector-layout Toast provider) and the app redirects — check-in to `/inspector/location/{id}` (its procedure), check-out to the checklist if one exists else home.
+- After a successful scan there is no full success screen: a toast fires (persists across navigation via the inspector-layout Toast provider) and the app redirects. Check-in goes to `/inspector/location/{id}` (its procedure); check-out goes to the checklist if one exists, else home.
 - The home screen has ONE floating scan button (`.scanFab`), not a per-restaurant button. Cards show status (בפנים/בחוץ) and tap to the location page.
 
 ## Scan corrections: two types

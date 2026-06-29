@@ -16,6 +16,12 @@ export async function GET(req: NextRequest) {
 
   const service = createServiceClient()
 
+  // Inspector must be assigned to this location (the route uses the service role,
+  // which bypasses RLS, so authorize explicitly).
+  const { data: assignment } = await service.from('inspector_locations')
+    .select('id').eq('inspector_id', user.id).eq('location_id', location_id).maybeSingle()
+  if (!assignment) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
   const { data: location } = await service.from('locations')
     .select('id,name,opening_hours,inspector_arrival_time,kashrus_procedure')
     .eq('id', location_id).single()

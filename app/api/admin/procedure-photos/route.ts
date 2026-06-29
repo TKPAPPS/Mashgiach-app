@@ -5,6 +5,7 @@ import sharp from 'sharp'
 
 const BUCKET = 'procedure-photos'
 const MAX_FILE_BYTES = 20 * 1024 * 1024 // 20 MB
+const ALLOWED_IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
 
 // Procedure photos are appliance/oven images; accept images only and re-encode.
 export async function GET(req: NextRequest) {
@@ -39,8 +40,8 @@ export async function POST(req: NextRequest) {
   if (file.size > MAX_FILE_BYTES) {
     return NextResponse.json({ error: `File too large (max ${MAX_FILE_BYTES / 1024 / 1024} MB)` }, { status: 413 })
   }
-  if (!file.type.toLowerCase().startsWith('image/')) {
-    return NextResponse.json({ error: 'יש להעלות תמונה בלבד' }, { status: 415 })
+  if (!ALLOWED_IMAGE_MIME.has(file.type.toLowerCase().split(';')[0].trim())) {
+    return NextResponse.json({ error: 'יש להעלות תמונה בלבד (JPEG/PNG/GIF/WebP)' }, { status: 415 })
   }
 
   const service = createServiceClient()
