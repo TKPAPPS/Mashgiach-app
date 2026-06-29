@@ -33,6 +33,8 @@ export type Location = {
   kashrus_procedure: string | null
   kashrus_procedure_file_url: string | null
   kashrus_certificate_url: string | null
+  opening_hours: string | null
+  inspector_arrival_time: string | null
   created_at: string
   updated_at: string
 }
@@ -70,6 +72,7 @@ export type ChecklistItem = {
   sort_order: number
   location_id: string | null
   frequency: ChecklistFrequency
+  procedure_note: string | null
   created_at: string
 }
 
@@ -195,6 +198,15 @@ export type Document = {
   created_at: string
 }
 
+export type ProcedurePhoto = {
+  id: string
+  location_id: string
+  photo_path: string
+  note: string | null
+  sort_order: number
+  created_at: string
+}
+
 export type GpsAlert = {
   id: string
   visit_log_id: string | null
@@ -254,10 +266,10 @@ export type Database = {
   public: {
     Tables: {
       profiles:            TableDef<Profile, Omit<Profile,'created_at'|'updated_at'|'vacation_days_remaining'|'start_date'|'contract_url'> & { vacation_days_remaining?: number; start_date?: string | null; contract_url?: string | null }, Partial<Profile>>
-      locations:           TableDef<Location, Omit<Location,'id'|'created_at'|'updated_at'> & { id?: string }, Partial<Location>>
+      locations:           TableDef<Location, Omit<Location,'id'|'created_at'|'updated_at'|'opening_hours'|'inspector_arrival_time'> & { id?: string; opening_hours?: string | null; inspector_arrival_time?: string | null }, Partial<Location>>
       inspector_locations: TableDef<InspectorLocation, Omit<InspectorLocation,'id'|'created_at'>, Partial<InspectorLocation>>
       visit_logs:          TableDef<VisitLog, Omit<VisitLog,'id'|'created_at'|'inspector'|'location'>, Partial<Omit<VisitLog,'inspector'|'location'>>>
-      checklist_items:     TableDef<ChecklistItem, Omit<ChecklistItem,'id'|'created_at'|'location_id'|'frequency'> & { id?: string; location_id?: string | null; frequency?: ChecklistFrequency }, Partial<ChecklistItem>>
+      checklist_items:     TableDef<ChecklistItem, Omit<ChecklistItem,'id'|'created_at'|'location_id'|'frequency'|'procedure_note'> & { id?: string; location_id?: string | null; frequency?: ChecklistFrequency; procedure_note?: string | null }, Partial<ChecklistItem>>
       visit_checks:        TableDef<VisitCheck, Omit<VisitCheck,'id'|'created_at'|'frequency'|'inspector'|'location'|'checklist_item'> & { frequency?: ChecklistFrequency | null }, Partial<Omit<VisitCheck,'inspector'|'location'|'checklist_item'>>>
       deficiency_reports:  TableDef<DeficiencyReport, Omit<DeficiencyReport,'id'|'created_at'|'updated_at'|'inspector'|'location'>, Partial<Omit<DeficiencyReport,'inspector'|'location'>>>
       absence_requests:    TableDef<AbsenceRequest, Omit<AbsenceRequest,'id'|'created_at'|'admin_status'|'admin_notes'|'days_deducted'|'inspector'|'location'|'replacement_inspector'> & { admin_status?: AbsenceAdminStatus; admin_notes?: string | null }, Partial<Omit<AbsenceRequest,'inspector'|'location'|'replacement_inspector'>>>
@@ -270,6 +282,7 @@ export type Database = {
       admin_report_followups:    TableDef<AdminReportFollowup, Omit<AdminReportFollowup,'id'|'created_at'>, Partial<AdminReportFollowup>>
       push_subscriptions:        TableDef<{ id: string; user_id: string; endpoint: string; p256dh: string; auth: string; created_at: string }, { user_id: string; endpoint: string; p256dh: string; auth: string }, { user_id?: string; endpoint?: string; p256dh?: string; auth?: string }>
       documents:                 TableDef<Document, Omit<Document,'id'|'created_at'>, Partial<Document>>
+      procedure_photos:          TableDef<ProcedurePhoto, Omit<ProcedurePhoto,'id'|'created_at'>, Partial<ProcedurePhoto>>
       report_settings:           TableDef<ReportSettings, Partial<Omit<ReportSettings,'id'|'updated_at'>>, Partial<Omit<ReportSettings,'id'>>>
       scan_corrections:          TableDef<ScanCorrection, Omit<ScanCorrection,'id'|'created_at'|'status'|'correction_type'|'admin_notes'|'reviewed_by'|'reviewed_at'|'entry_log_id'|'exit_log_id'|'inspector'|'location'> & { correction_type?: ScanCorrectionType }, Partial<Omit<ScanCorrection,'inspector'|'location'>>>
     }

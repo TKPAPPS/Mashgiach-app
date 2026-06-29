@@ -4,10 +4,11 @@ import { createClient } from '@/lib/supabase/client'
 import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import { formatDateTime } from '@/lib/utils/format'
-import type { Location, VisitLog, DeficiencyReport, VisitCheck, Profile } from '@/lib/supabase/types'
+import type { Location, VisitLog, DeficiencyReport, VisitCheck, Profile, ChecklistItem } from '@/lib/supabase/types'
 import { Upload, Trash2, ExternalLink } from 'lucide-react'
 
-type InnerTab = 'info' | 'kashrus' | 'certificate' | 'inspectors' | 'deficiencies' | 'checks' | 'visits'
+type InnerTab = 'info' | 'kashrus' | 'certificate' | 'procedure' | 'inspectors' | 'deficiencies' | 'checks' | 'visits'
+type ProcPhoto = { id: string; note: string | null; url: string | null }
 
 export default function LocationDetailModal({ loc, onClose }: { loc: Location; onClose: () => void }) {
   const supabase = createClient()
@@ -22,8 +23,83 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
   const [saving, setSaving] = useState(false)
   const [editingDefNotes, setEditingDefNotes] = useState<Record<string, string>>({})
   const [savingDefNotes, setSavingDefNotes] = useState<Record<string, boolean>>({})
+  // Procedure tab state (loaded lazily when the tab opens)
+  const [procLoaded, setProcLoaded] = useState(false)
+  const [procPhotos, setProcPhotos] = useState<ProcPhoto[]>([])
+  const [procItems, setProcItems] = useState<ChecklistItem[]>([])
+  const [procNoteEdits, setProcNoteEdits] = useState<Record<string, string>>({})
+  const [newPhotoNote, setNewPhotoNote] = useState('')
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
 
   useEffect(() => { loadAll() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (tab === 'procedure' && !procLoaded) loadProcedure() }, [tab]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function loadProcedure() {
+    const res = await fetch(`/api/admin/procedure-photos?location_id=${loc.id}`)
+    setProcPhotos(res.ok ? await res.json() : [])
+    // The location's own checklist items (fallback to global), to attach per-check notes.
+    const { data: own } = await supabase.from('checklist_items').select('*').eq('location_id', loc.id).order('sort_order')
+    let items = (own ?? []) as ChecklistItem[]
+    if (items.length === 0) {
+      const { data: globals } = await supabase.from('checklist_items').select('*').is('location_id', null).order('sort_order')
+      items = (globals ?? []) as ChecklistItem[]
+    }
+    setProcItems(items)
+    setProcLoaded(true)
+  }
+
+  async function saveProcedureFields(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    setSaving(true)
+    const fd = new FormData(e.currentTarget)
+    const { error, data } = await supabase.from('locations').update({
+      opening_hours: (fd.get('opening_hours') as string) || null,
+      inspector_arrival_time: (fd.get('inspector_arrival_time') as string) || null,
+    }).eq('id', loc.id).select().single()
+    if (error) toast('שגיאה בשמירה', 'error')
+    else { toast('הנוהל נשמר', 'success'); setLocation(data as Location) }
+    setSaving(false)
+  }
+
+  async function uploadProcedurePhoto(file: File) {
+    setUploadingPhoto(true)
+    const form = new FormData()
+    form.append('location_id', loc.id)
+    form.append('file', file)
+    if (newPhotoNote.trim()) form.append('note', newPhotoNote.trim())
+    const res = await fetch('/api/admin/procedure-photos', { method: 'POST', body: form })
+    if (res.ok) { const created = await res.json(); setProcPhotos(prev => [...prev, created]); setNewPhotoNote('') }
+    else toast('שגיאה בהעלאת התמונה', 'error')
+    setUploadingPhoto(false)
+  }
+
+  async function deleteProcedurePhoto(id: string) {
+    const res = await fetch(`/api/admin/procedure-photos?id=${id}`, { method: 'DELETE' })
+    if (res.ok) setProcPhotos(prev => prev.filter(p => p.id !== id))
+    else toast('שגיאה במחיקה', 'error')
+  }
+
+  async function saveProcPhotoNote(id: string) {
+    const note = procNoteEdits[`photo-${id}`] ?? ''
+    const res = await fetch('/api/admin/procedure-photos', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, note }),
+    })
+    if (res.ok) {
+      setProcPhotos(prev => prev.map(p => p.id === id ? { ...p, note: note || null } : p))
+      setProcNoteEdits(prev => { const n = { ...prev }; delete n[`photo-${id}`]; return n })
+      toast('ההערה נשמרה', 'success')
+    } else toast('שגיאה', 'error')
+  }
+
+  async function saveCheckProcNote(id: string) {
+    const note = procNoteEdits[`check-${id}`] ?? ''
+    const { error } = await supabase.from('checklist_items').update({ procedure_note: note || null }).eq('id', id)
+    if (error) { toast('שגיאה', 'error'); return }
+    setProcItems(prev => prev.map(i => i.id === id ? { ...i, procedure_note: note || null } : i))
+    setProcNoteEdits(prev => { const n = { ...prev }; delete n[`check-${id}`]; return n })
+    toast('ההערה נשמרה', 'success')
+  }
 
   async function loadAll() {
     const [{ data: fullLoc }, { data: v }, { data: d }, { data: c }, { data: ai }, { data: all }] = await Promise.all([
@@ -115,6 +191,7 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
   const INNER_TABS: { id: InnerTab; label: string }[] = [
     { id: 'info',         label: 'פרטי קשר' },
     { id: 'kashrus',      label: 'נוהל כשרות' },
+    { id: 'procedure',    label: 'נוהל עבודה' },
     { id: 'certificate',  label: 'תעודת כשרות' },
     { id: 'inspectors',   label: 'משגיחים' },
     { id: 'deficiencies', label: 'ליקויים' },
@@ -157,6 +234,82 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
             <button className="button button--primary" type="submit" disabled={saving}>שמור נוהל</button>
           </div>
         </form>
+      )}
+
+      {/* Work & kashrut procedure */}
+      {tab === 'procedure' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          <form key={`proc-${location.updated_at ?? 'loading'}`} onSubmit={saveProcedureFields} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div className="fieldRow">
+              <label className="field"><span>שעות פתיחה</span><input name="opening_hours" defaultValue={location.opening_hours ?? ''} placeholder="08:00-22:00" /></label>
+              <label className="field"><span>שעת הגעת משגיח נדרשת</span><input name="inspector_arrival_time" defaultValue={location.inspector_arrival_time ?? ''} placeholder="08:30" /></label>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button className="button button--primary" type="submit" disabled={saving}>שמור</button>
+            </div>
+            <p style={{ fontSize: '.78rem', color: 'var(--muted)', margin: 0 }}>הטקסט הכללי של הנוהל נערך בלשונית &quot;נוהל כשרות&quot;.</p>
+          </form>
+
+          {/* Appliance / oven photos with a note each */}
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '.9rem', marginBottom: 8 }}>תמונות תנורים ומכשירי חשמל</div>
+            {procPhotos.length > 0 && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10, marginBottom: 12 }}>
+                {procPhotos.map(p => (
+                  <div key={p.id} className="card" style={{ margin: 0, padding: 8 }}>
+                    {p.url && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={p.url} alt="" style={{ width: '100%', aspectRatio: '4/3', objectFit: 'cover', borderRadius: 8 }} />
+                    )}
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginTop: 6 }}>
+                      <input
+                        value={procNoteEdits[`photo-${p.id}`] ?? (p.note ?? '')}
+                        onChange={e => setProcNoteEdits(prev => ({ ...prev, [`photo-${p.id}`]: e.target.value }))}
+                        placeholder="הערה לתמונה..."
+                        style={{ flex: 1, border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '4px 8px', fontSize: '.8rem' }} />
+                      {procNoteEdits[`photo-${p.id}`] !== undefined && procNoteEdits[`photo-${p.id}`] !== (p.note ?? '') && (
+                        <button className="button button--primary button--sm" style={{ padding: '4px 8px', fontSize: '.72rem' }} onClick={() => saveProcPhotoNote(p.id)}>שמור</button>
+                      )}
+                      <button className="button button--icon button--ghost" style={{ color: 'var(--danger)' }} onClick={() => deleteProcedurePhoto(p.id)}><Trash2 size={14} /></button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <input value={newPhotoNote} onChange={e => setNewPhotoNote(e.target.value)} placeholder="הערה (אופציונלי) לתמונה הבאה"
+                style={{ flex: 1, minWidth: 160, border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '7px 10px', fontSize: '.82rem' }} />
+              <label className="button button--ghost button--sm" style={{ cursor: 'pointer', gap: 6 }}>
+                {uploadingPhoto ? <span className="spinner" style={{ width: 14, height: 14 }} /> : <Upload size={14} />} העלה תמונה
+                <input type="file" accept="image/*" style={{ display: 'none' }}
+                  onChange={e => { const f = e.target.files?.[0]; if (f) uploadProcedurePhoto(f); e.target.value = '' }} />
+              </label>
+            </div>
+          </div>
+
+          {/* Per-check procedure notes */}
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '.9rem', marginBottom: 8 }}>הערות נוהל לבדיקות הכשרות</div>
+            {procItems.length === 0 ? <p className="textSm textMuted">אין פריטי בדיקה למקום זה.</p> :
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {procItems.map(item => (
+                <div key={item.id} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <span style={{ flex: '0 0 40%', fontSize: '.84rem' }}>
+                    {item.name} <span className="badge badge--muted" style={{ fontSize: '.66rem' }}>{item.frequency === 'weekly' ? 'שבועי' : 'יומי'}</span>
+                  </span>
+                  <input
+                    value={procNoteEdits[`check-${item.id}`] ?? (item.procedure_note ?? '')}
+                    onChange={e => setProcNoteEdits(prev => ({ ...prev, [`check-${item.id}`]: e.target.value }))}
+                    placeholder="הערת נוהל..."
+                    style={{ flex: 1, border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '4px 8px', fontSize: '.8rem' }} />
+                  {procNoteEdits[`check-${item.id}`] !== undefined && procNoteEdits[`check-${item.id}`] !== (item.procedure_note ?? '') && (
+                    <button className="button button--primary button--sm" style={{ padding: '4px 8px', fontSize: '.72rem' }} onClick={() => saveCheckProcNote(item.id)}>שמור</button>
+                  )}
+                </div>
+              ))}
+            </div>}
+          </div>
+        </div>
       )}
 
       {/* Certificate */}

@@ -126,26 +126,41 @@ export default function InspectorLocationPage({ params }: { params: Promise<{ id
   const [loading, setLoading] = useState(true)
   const [photoCounts, setPhotoCounts] = useState<Record<string, number>>({})
   const [photoModalVisitId, setPhotoModalVisitId] = useState<string | null>(null)
+  const [procPhotos, setProcPhotos] = useState<{ id: string; note: string | null; url: string | null }[]>([])
 
   async function loadAll() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { router.push('/login'); return }
 
-    const [{ data: loc }, { data: assignment }, { data: visits }, { data: checklist }] = await Promise.all([
+    const [{ data: loc }, { data: assignment }, { data: visits }, { data: locChecklist }] = await Promise.all([
       supabase.from('locations').select('*').eq('id', id).single(),
       supabase.from('inspector_locations').select('id').eq('inspector_id', user.id).eq('location_id', id).maybeSingle(),
       supabase.from('visit_logs').select('*').eq('location_id', id).eq('inspector_id', user.id)
         .order('created_at', { ascending: false }).limit(10),
-      supabase.from('checklist_items').select('*').eq('active', true).order('sort_order'),
+      supabase.from('checklist_items').select('*').eq('active', true).eq('location_id', id).order('sort_order'),
     ])
 
     if (!loc || !assignment) { router.push('/inspector'); return }
 
+    // Per-location checklist, falling back to the global default list.
+    let checklist = (locChecklist ?? []) as ChecklistItem[]
+    if (checklist.length === 0) {
+      const { data: globals } = await supabase.from('checklist_items')
+        .select('*').eq('active', true).is('location_id', null).order('sort_order')
+      checklist = (globals ?? []) as ChecklistItem[]
+    }
+
     const visitList = (visits ?? []) as VisitLog[]
     setLocation(loc as Location)
     setRecentVisits(visitList)
-    setChecklistItems((checklist ?? []) as ChecklistItem[])
+    setChecklistItems(checklist)
     setLoading(false)
+
+    // Procedure appliance photos (signed URLs from the server).
+    fetch(`/api/inspector/procedure?location_id=${id}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.photos) setProcPhotos(d.photos) })
+      .catch(() => {})
 
     // Batch-fetch photo counts (single query)
     if (visitList.length > 0) {
@@ -199,6 +214,33 @@ export default function InspectorLocationPage({ params }: { params: Promise<{ id
           </div>
         </div>
 
+        {/* Work & kashrut procedure: hours, required arrival, appliance photos */}
+        {(location.opening_hours || location.inspector_arrival_time || procPhotos.length > 0) && (
+          <div className="card">
+            <div className="card__header"><div className="card__title">נוהל עבודה וכשרות</div></div>
+            <div className="card__body" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {location.opening_hours && <div><span className="textMuted textSm">שעות פתיחה: </span>{location.opening_hours}</div>}
+              {location.inspector_arrival_time && <div><span className="textMuted textSm">שעת הגעה נדרשת: </span>{location.inspector_arrival_time}</div>}
+              {procPhotos.length > 0 && (
+                <div>
+                  <div className="textMuted textSm" style={{ marginBottom: 6 }}>תנורים ומכשירי חשמל</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8 }}>
+                    {procPhotos.map(p => (
+                      <a key={p.id} href={p.url ?? '#'} target="_blank" rel="noreferrer" style={{ textDecoration: 'none', color: 'inherit' }}>
+                        {p.url && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={p.url} alt="" style={{ width: '100%', aspectRatio: '4/3', objectFit: 'cover', borderRadius: 8 }} />
+                        )}
+                        {p.note && <div style={{ fontSize: '.78rem', marginTop: 4, lineHeight: 1.4 }}>{p.note}</div>}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Kashrus procedure */}
         {(location.kashrus_procedure || location.kashrus_certificate_url) && (
           <div className="card">
@@ -226,9 +268,19 @@ export default function InspectorLocationPage({ params }: { params: Promise<{ id
             <div className="card__body">
               <div className="checklistWrap">
                 {checklistItems.map(item => (
-                  <div key={item.id} className="checkItem" style={{ opacity: 0.7, cursor: 'default' }}>
-                    <input type="checkbox" disabled style={{ accentColor: 'var(--primary)' }} />
-                    <span>{item.name}</span>
+                  <div key={item.id} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <div className="checkItem" style={{ opacity: 0.85, cursor: 'default' }}>
+                      <input type="checkbox" disabled style={{ accentColor: 'var(--primary)' }} />
+                      <span>{item.name}</span>
+                      <span className="badge badge--muted" style={{ fontSize: '.66rem', marginInlineStart: 'auto' }}>
+                        {item.frequency === 'weekly' ? 'שבועי' : 'יומי'}
+                      </span>
+                    </div>
+                    {item.procedure_note && (
+                      <div style={{ fontSize: '.78rem', color: 'var(--muted)', marginInlineStart: 26, lineHeight: 1.4 }}>
+                        {item.procedure_note}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
