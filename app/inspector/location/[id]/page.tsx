@@ -1,9 +1,10 @@
 'use client'
-import { useState, useEffect, use, useRef, useCallback } from 'react'
+import { useState, useEffect, use, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { ArrowRight, ExternalLink, QrCode, Camera, X, Trash2 } from 'lucide-react'
 import { formatRelative } from '@/lib/utils/format'
+import PhotoAddControl from '@/components/ui/PhotoAddControl'
 import type { Location, VisitLog, ChecklistItem } from '@/lib/supabase/types'
 
 type VisitPhoto = { id: string; url: string | null; created_at: string }
@@ -13,7 +14,6 @@ function PhotoModal({ visitLogId, onClose }: { visitLogId: string; onClose: () =
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [lightbox, setLightbox] = useState<string | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -93,27 +93,10 @@ function PhotoModal({ visitLogId, onClose }: { visitLogId: string; onClose: () =
             )}
 
             {photos.length < 10 && (
-              <button
-                className="button button--ghost"
-                style={{ width: '100%', gap: 8 }}
-                disabled={uploading}
-                onClick={() => fileInputRef.current?.click()}>
-                {uploading ? <span className="spinner" style={{ width: 16, height: 16 }} /> : <Camera size={16} />}
-                {uploading ? 'מעלה...' : `הוסף תמונה (${10 - photos.length} נותרו)`}
-              </button>
+              <PhotoAddControl onFiles={handleFiles} uploading={uploading} remaining={10 - photos.length} />
             )}
           </div>
         )}
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          capture="environment"
-          style={{ display: 'none' }}
-          onChange={e => handleFiles(e.target.files)}
-        />
       </div>
 
       {/* Lightbox */}

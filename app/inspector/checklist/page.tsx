@@ -2,7 +2,8 @@
 import { useState, useEffect, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowRight, CheckCircle, AlertTriangle, Camera, Trash2 } from 'lucide-react'
+import { ArrowRight, CheckCircle, AlertTriangle, Trash2 } from 'lucide-react'
+import PhotoAddControl from '@/components/ui/PhotoAddControl'
 import type { ChecklistItem } from '@/lib/supabase/types'
 
 type VisitPhoto = { id: string; url: string | null }
@@ -10,7 +11,6 @@ type VisitPhoto = { id: string; url: string | null }
 function PhotoUpload({ visitLogId }: { visitLogId: string }) {
   const [photos, setPhotos] = useState<VisitPhoto[]>([])
   const [uploading, setUploading] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   async function handleFiles(files: FileList | null) {
     if (!files) return
@@ -56,12 +56,8 @@ function PhotoUpload({ visitLogId }: { visitLogId: string }) {
           </div>
         )}
         {photos.length < 10 && (
-          <button className="button button--ghost" style={{ gap: 8 }} disabled={uploading} onClick={() => fileInputRef.current?.click()}>
-            {uploading ? <span className="spinner" style={{ width: 16, height: 16 }} /> : <Camera size={16} />}
-            {uploading ? 'מעלה...' : `הוסף תמונה (${10 - photos.length} נותרו)`}
-          </button>
+          <PhotoAddControl onFiles={handleFiles} uploading={uploading} remaining={10 - photos.length} />
         )}
-        <input ref={fileInputRef} type="file" accept="image/*" multiple capture="environment" style={{ display: 'none' }} onChange={e => handleFiles(e.target.files)} />
       </div>
     </div>
   )

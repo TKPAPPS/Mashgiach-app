@@ -1,10 +1,11 @@
 'use client'
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { MapPin, QrCode, AlertTriangle, Calendar, User, LogOut, Camera, Trash2, History } from 'lucide-react'
+import { MapPin, QrCode, AlertTriangle, Calendar, User, LogOut, Trash2, History } from 'lucide-react'
 import Image from 'next/image'
 import { formatRelative, formatDate } from '@/lib/utils/format'
+import PhotoAddControl from '@/components/ui/PhotoAddControl'
 import type { Location, Profile, VisitLog } from '@/lib/supabase/types'
 
 type LocationWithLastVisit = Location & { lastVisit?: VisitLog }
@@ -110,18 +111,14 @@ export default function InspectorHome() {
                         {loc.lastVisit.action_type === 'entry' ? 'כניסה' : 'יציאה'}
                       </div>
                     )}
-                    {!isInactive && (
-                      <button
-                        className="button button--primary"
-                        style={{ marginTop: 10, width: '100%' }}
-                        onClick={e => { e.stopPropagation(); router.push('/inspector/scan') }}>
-                        <QrCode size={15} /> סרוק QR
-                      </button>
-                    )}
                   </div>
                 )
               })
             }
+            {/* One central scan action instead of a button per card */}
+            <button className="scanFab" onClick={() => router.push('/inspector/scan')}>
+              <QrCode size={20} /> סרוק QR
+            </button>
           </>
         )}
 
@@ -183,7 +180,6 @@ function ReportForm({ profile, locations }: { profile: Profile | null; locations
   const [reportId, setReportId] = useState<string | null>(null)
   const [photos, setPhotos] = useState<ReportPhoto[]>([])
   const [uploading, setUploading] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -269,12 +265,8 @@ function ReportForm({ profile, locations }: { profile: Profile | null; locations
             </div>
           )}
           {photos.length < 10 && (
-            <button className="button button--ghost" style={{ gap: 8 }} disabled={uploading} onClick={() => fileInputRef.current?.click()}>
-              {uploading ? <span className="spinner" style={{ width: 16, height: 16 }} /> : <Camera size={16} />}
-              {uploading ? 'מעלה...' : `הוסף תמונה (${10 - photos.length} נותרו)`}
-            </button>
+            <PhotoAddControl onFiles={handleFiles} uploading={uploading} remaining={10 - photos.length} />
           )}
-          <input ref={fileInputRef} type="file" accept="image/*" multiple capture="environment" style={{ display: 'none' }} onChange={e => handleFiles(e.target.files)} />
         </div>
       </div>
 

@@ -1,7 +1,8 @@
 'use client'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { CheckCircle, ArrowRight, Camera } from 'lucide-react'
+import { ArrowRight, Camera } from 'lucide-react'
+import { useToast } from '@/components/ui/Toast'
 
 type ScanResult = {
   success: boolean
@@ -15,7 +16,7 @@ type ScanResult = {
 
 export default function ScanPage() {
   const router = useRouter()
-  const [result, setResult] = useState<ScanResult | null>(null)
+  const { toast } = useToast()
   const [scanError, setScanError] = useState<string | null>(null)
   const [processing, setProcessing] = useState(false)
   const [cameraError, setCameraError] = useState<string | null>(null)
@@ -64,9 +65,16 @@ export default function ScanPage() {
       return
     }
 
-    setResult(data)
-    setProcessing(false)
-  }, [router])
+    // Brief confirmation popup (persists across navigation via the app-level
+    // Toast provider), then leave the scanner: check-in opens the location page
+    // (its procedure), check-out returns home.
+    toast(data.action_type === 'entry' ? 'כניסה נרשמה בהצלחה' : 'יציאה נרשמה בהצלחה', 'success')
+    if (data.action_type === 'entry' && data.location_id) {
+      router.push(`/inspector/location/${data.location_id}`)
+    } else {
+      router.push('/inspector')
+    }
+  }, [router, toast])
 
   useEffect(() => {
     let stopped = false
@@ -116,42 +124,10 @@ export default function ScanPage() {
 
   function handleRetry() {
     hasScanned.current = false
-    setResult(null)
     setScanError(null)
     setProcessing(false)
     setCameraError(null)
     router.replace('/inspector/scan')
-  }
-
-  if (result) {
-    return (
-      <div className="app" style={{ maxWidth: 480, margin: '0 auto', minHeight: '100svh', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, gap: 20, textAlign: 'center' }}>
-          <CheckCircle size={64} style={{ color: 'var(--success)' }} />
-          <div>
-            <div style={{ fontSize: '1.3rem', fontWeight: 700, marginBottom: 8 }}>
-              {result.action_type === 'entry' ? 'כניסה' : 'יציאה'} בוצעה
-            </div>
-            {result.location_name && (
-              <div style={{ color: 'var(--muted)', fontSize: '.95rem' }}>{result.location_name}</div>
-            )}
-          </div>
-          <p style={{ color: 'var(--muted)', fontSize: '.9rem', maxWidth: 280 }}>
-            הפעולה נרשמה בהצלחה במערכת.
-          </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%', maxWidth: 280 }}>
-            {result.action_type === 'entry' && result.location_id && (
-              <button className="button button--primary" onClick={() => router.push(`/inspector/location/${result.location_id}`)}>
-                צפה בפרטי המקום
-              </button>
-            )}
-            <button className="button button--ghost" onClick={() => router.push('/inspector')}>
-              <ArrowRight size={15} /> חזור לבית
-            </button>
-          </div>
-        </div>
-      </div>
-    )
   }
 
   if (scanError) {
@@ -199,7 +175,7 @@ export default function ScanPage() {
             <p style={{ color: 'var(--muted)', fontSize: '.875rem', textAlign: 'center' }}>
               כוון את המצלמה לקוד ה-QR שמוצג במקום
             </p>
-            <div className="scanBox" style={{ maxWidth: 320 }}>
+            <div className="scanBox">
               <div id="qr-reader" style={{ width: '100%', height: '100%' }} />
             </div>
           </>
