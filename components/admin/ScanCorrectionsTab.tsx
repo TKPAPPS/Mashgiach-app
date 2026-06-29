@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Check, X } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 import { formatDateTime } from '@/lib/utils/format'
-import type { ScanCorrection, ScanCorrectionStatus } from '@/lib/supabase/types'
+import type { ScanCorrection, ScanCorrectionStatus, ScanCorrectionType } from '@/lib/supabase/types'
 
 type Props = { refreshKey: number }
 
@@ -12,6 +12,11 @@ const STATUS: Record<ScanCorrectionStatus, { label: string; cls: string }> = {
   pending:  { label: 'ממתין',  cls: 'badge--warning' },
   approved: { label: 'אושר',   cls: 'badge--success' },
   denied:   { label: 'נדחה',   cls: 'badge--danger' },
+}
+
+const TYPE_LABEL: Record<ScanCorrectionType, string> = {
+  missed_checkout: 'שכחת יציאה',
+  missing_visit:   'ביקור חסר',
 }
 
 export default function ScanCorrectionsTab({ refreshKey }: Props) {
@@ -68,7 +73,7 @@ export default function ScanCorrectionsTab({ refreshKey }: Props) {
           <table>
             <thead>
               <tr>
-                <th>נשלח</th><th>משגיח</th><th>מקום</th><th>כניסה משוערת</th><th>יציאה משוערת</th>
+                <th>נשלח</th><th>סוג</th><th>משגיח</th><th>מקום</th><th>כניסה משוערת</th><th>יציאה משוערת</th>
                 <th>הערה</th><th>סטטוס</th><th>פעולה</th>
               </tr>
             </thead>
@@ -80,9 +85,10 @@ export default function ScanCorrectionsTab({ refreshKey }: Props) {
                 return (
                   <tr key={r.id}>
                     <td className="noWrap textSm textMuted">{formatDateTime(r.created_at)}</td>
+                    <td className="noWrap"><span className="badge badge--muted">{TYPE_LABEL[r.correction_type] ?? '-'}</span></td>
                     <td>{insp}</td>
                     <td>{loc}</td>
-                    <td className="noWrap">{formatDateTime(r.est_entry)}</td>
+                    <td className="noWrap">{r.est_entry ? formatDateTime(r.est_entry) : <span className="mutedCell">-</span>}</td>
                     <td className="noWrap">{formatDateTime(r.est_exit)}</td>
                     <td>{r.note ?? <span className="mutedCell">-</span>}</td>
                     <td><span className={`badge ${st.cls}`}>{st.label}</span></td>

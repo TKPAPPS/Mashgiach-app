@@ -10,8 +10,13 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { location_id, est_entry, est_exit, note } = await req.json()
+  const { location_id, correction_type, est_entry, est_exit, note } = await req.json()
   if (!location_id) return NextResponse.json({ error: 'חסר מקום' }, { status: 400 })
+
+  // missed_checkout: the check-in already exists, only the exit is estimated.
+  // missing_visit: both the entry and the exit are estimated.
+  const type: 'missed_checkout' | 'missing_visit' =
+    correction_type === 'missed_checkout' ? 'missed_checkout' : 'missing_visit'
 
   // datetime-local sends wall-clock with no zone; inspectors are in Bangkok, so
   // interpret the entered time as Asia/Bangkok (UTC+7) regardless of server zone.
@@ -22,15 +27,22 @@ export async function POST(req: NextRequest) {
     return Date.parse(`${m[2] ? s : `${s}:00`}+07:00`)
   }
 
-  const entryMs = parseBangkok(est_entry)
   const exitMs = parseBangkok(est_exit)
-  if (isNaN(entryMs) || isNaN(exitMs)) {
-    return NextResponse.json({ error: 'זמנים לא תקינים' }, { status: 400 })
+  if (isNaN(exitMs)) return NextResponse.json({ error: 'זמן יציאה לא תקין' }, { status: 400 })
+
+  let entryIso: string | null = null
+  if (type === 'missing_visit') {
+    const entryMs = parseBangkok(est_entry)
+    if (isNaN(entryMs)) return NextResponse.json({ error: 'זמן כניסה לא תקין' }, { status: 400 })
+    if (exitMs <= entryMs) {
+      return NextResponse.json({ error: 'זמן היציאה חייב להיות אחרי זמן הכניסה' }, { status: 400 })
+    }
+    if (entryMs > Date.now() + 60_000) {
+      return NextResponse.json({ error: 'לא ניתן לדווח על זמן עתידי' }, { status: 400 })
+    }
+    entryIso = new Date(entryMs).toISOString()
   }
-  if (exitMs <= entryMs) {
-    return NextResponse.json({ error: 'זמן היציאה חייב להיות אחרי זמן הכניסה' }, { status: 400 })
-  }
-  if (Math.max(entryMs, exitMs) > Date.now() + 60_000) {
+  if (exitMs > Date.now() + 60_000) {
     return NextResponse.json({ error: 'לא ניתן לדווח על זמן עתידי' }, { status: 400 })
   }
 
@@ -48,7 +60,8 @@ export async function POST(req: NextRequest) {
   const { error } = await service.from('scan_corrections').insert({
     inspector_id: user.id,
     location_id,
-    est_entry: new Date(entryMs).toISOString(),
+    correction_type: type,
+    est_entry: entryIso,
     est_exit: new Date(exitMs).toISOString(),
     note: note ? String(note).trim().slice(0, 2000) : null,
   })

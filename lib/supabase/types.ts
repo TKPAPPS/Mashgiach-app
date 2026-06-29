@@ -210,12 +210,14 @@ export type GpsAlert = {
 }
 
 export type ScanCorrectionStatus = 'pending' | 'approved' | 'denied'
+export type ScanCorrectionType = 'missed_checkout' | 'missing_visit'
 
 export type ScanCorrection = {
   id: string
   inspector_id: string
   location_id: string
-  est_entry: string
+  correction_type: ScanCorrectionType
+  est_entry: string | null
   est_exit: string
   note: string | null
   status: ScanCorrectionStatus
@@ -269,7 +271,7 @@ export type Database = {
       push_subscriptions:        TableDef<{ id: string; user_id: string; endpoint: string; p256dh: string; auth: string; created_at: string }, { user_id: string; endpoint: string; p256dh: string; auth: string }, { user_id?: string; endpoint?: string; p256dh?: string; auth?: string }>
       documents:                 TableDef<Document, Omit<Document,'id'|'created_at'>, Partial<Document>>
       report_settings:           TableDef<ReportSettings, Partial<Omit<ReportSettings,'id'|'updated_at'>>, Partial<Omit<ReportSettings,'id'>>>
-      scan_corrections:          TableDef<ScanCorrection, Omit<ScanCorrection,'id'|'created_at'|'status'|'admin_notes'|'reviewed_by'|'reviewed_at'|'entry_log_id'|'exit_log_id'|'inspector'|'location'>, Partial<Omit<ScanCorrection,'inspector'|'location'>>>
+      scan_corrections:          TableDef<ScanCorrection, Omit<ScanCorrection,'id'|'created_at'|'status'|'correction_type'|'admin_notes'|'reviewed_by'|'reviewed_at'|'entry_log_id'|'exit_log_id'|'inspector'|'location'> & { correction_type?: ScanCorrectionType }, Partial<Omit<ScanCorrection,'inspector'|'location'>>>
     }
     Views: Record<string, never>
     Functions: Record<string, never>

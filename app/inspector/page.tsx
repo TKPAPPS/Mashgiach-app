@@ -139,9 +139,9 @@ export default function InspectorHome() {
               : <AbsenceForm profile={profile} locations={locations} />}
 
             <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '24px 0 16px' }} />
-            <div style={{ fontWeight: 700, fontSize: '1.05rem', marginBottom: 6 }}>דיווח על שכחת יציאה</div>
+            <div style={{ fontWeight: 700, fontSize: '1.05rem', marginBottom: 6 }}>דיווח על תיקון סריקה</div>
             <p style={{ fontSize: '.82rem', color: 'var(--muted)', margin: '0 0 14px' }}>
-              שכחת לסרוק יציאה? דווח על שעות הכניסה והיציאה המשוערות, והמנהל יאשר.
+              שכחת לסרוק יציאה, או ביקור שלא תועד כלל? בחר את סוג הדיווח, מלא את הזמנים המשוערים, והמנהל יאשר.
             </p>
             {!loading && <ScanCorrectionForm profile={profile} locations={locations} />}
           </div>
@@ -438,6 +438,7 @@ function ScanCorrectionForm({ profile, locations }: { profile: Profile | null; l
   const [saving, setSaving] = useState(false)
   const [done, setDone] = useState(false)
   const [error, setError] = useState('')
+  const [mode, setMode] = useState<'missed_checkout' | 'missing_visit'>('missed_checkout')
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -450,7 +451,8 @@ function ScanCorrectionForm({ profile, locations }: { profile: Profile | null; l
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         location_id: (fd.get('location_id') as string) || null,
-        est_entry: (fd.get('est_entry') as string) || null,
+        correction_type: mode,
+        est_entry: mode === 'missing_visit' ? (fd.get('est_entry') as string) || null : null,
         est_exit: (fd.get('est_exit') as string) || null,
         note: (fd.get('note') as string) || null,
       }),
@@ -476,16 +478,27 @@ function ScanCorrectionForm({ profile, locations }: { profile: Profile | null; l
   return (
     <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <label className="field">
+        <span>סוג הדיווח</span>
+        <select value={mode} onChange={e => setMode(e.target.value as typeof mode)}>
+          <option value="missed_checkout">שכחתי לסרוק יציאה (הכניסה קיימת במערכת)</option>
+          <option value="missing_visit">ביקור שלא תועד כלל (כניסה ויציאה)</option>
+        </select>
+      </label>
+      <label className="field">
         <span>מקום *</span>
         <select name="location_id" required defaultValue="">
           <option value="" disabled>בחר מקום</option>
           {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
         </select>
       </label>
-      <div className="fieldRow">
-        <label className="field"><span>זמן כניסה משוער *</span><input name="est_entry" type="datetime-local" required /></label>
+      {mode === 'missing_visit' ? (
+        <div className="fieldRow">
+          <label className="field"><span>זמן כניסה משוער *</span><input name="est_entry" type="datetime-local" required /></label>
+          <label className="field"><span>זמן יציאה משוער *</span><input name="est_exit" type="datetime-local" required /></label>
+        </div>
+      ) : (
         <label className="field"><span>זמן יציאה משוער *</span><input name="est_exit" type="datetime-local" required /></label>
-      </div>
+      )}
       <label className="field">
         <span>הערה</span>
         <textarea name="note" rows={3} placeholder="פרטים נוספים..." />
