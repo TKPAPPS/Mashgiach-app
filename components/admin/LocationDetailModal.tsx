@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
@@ -33,6 +33,7 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
   const [procNoteEdits, setProcNoteEdits] = useState<Record<string, string>>({})
   const [newPhotoNote, setNewPhotoNote] = useState('')
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const procCheckBusy = useRef<Set<string>>(new Set())
 
   useEffect(() => { loadAll() }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (tab === 'procedure' && !procLoaded) loadProcedure() }, [tab]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -53,7 +54,11 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
     const map: Record<string, { id: string; note: string | null }> = {}
     for (const r of pc ?? []) map[r.checklist_item_id] = { id: r.id, note: r.note }
     setProcChecks(map)
-    setWorkingDays(location.working_days ? location.working_days.split(',').filter(Boolean) : [])
+    // Read working_days from a dedicated fetch: the list-row `loc`/`location` may
+    // not yet carry it (the list query doesn't select it), and seeding from a
+    // stale value would let a save clear existing days.
+    const { data: freshLoc } = await supabase.from('locations').select('working_days').eq('id', loc.id).single()
+    setWorkingDays(freshLoc?.working_days ? freshLoc.working_days.split(',').filter(Boolean) : [])
     setProcLoaded(true)
   }
 
@@ -72,16 +77,24 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
   }
 
   async function toggleProcCheck(itemId: string) {
-    const existing = procChecks[itemId]
-    if (existing) {
-      const { error } = await supabase.from('procedure_checks').delete().eq('id', existing.id)
-      if (error) { toast('שגיאה', 'error'); return }
-      setProcChecks(prev => { const n = { ...prev }; delete n[itemId]; return n })
-    } else {
-      const { data, error } = await supabase.from('procedure_checks')
-        .insert({ location_id: loc.id, checklist_item_id: itemId, note: null }).select('id,note').single()
-      if (error) { toast('שגיאה', 'error'); return }
-      setProcChecks(prev => ({ ...prev, [itemId]: { id: data.id, note: data.note } }))
+    // Ignore a re-click while this item's toggle is mid-flight (prevents a
+    // double insert / unique-constraint hit before optimistic state settles).
+    if (procCheckBusy.current.has(itemId)) return
+    procCheckBusy.current.add(itemId)
+    try {
+      const existing = procChecks[itemId]
+      if (existing) {
+        const { error } = await supabase.from('procedure_checks').delete().eq('id', existing.id)
+        if (error) { toast('שגיאה', 'error'); return }
+        setProcChecks(prev => { const n = { ...prev }; delete n[itemId]; return n })
+      } else {
+        const { data, error } = await supabase.from('procedure_checks')
+          .insert({ location_id: loc.id, checklist_item_id: itemId, note: null }).select('id,note').single()
+        if (error) { toast('שגיאה', 'error'); return }
+        setProcChecks(prev => ({ ...prev, [itemId]: { id: data.id, note: data.note } }))
+      }
+    } finally {
+      procCheckBusy.current.delete(itemId)
     }
   }
 

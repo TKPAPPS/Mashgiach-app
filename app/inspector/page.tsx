@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { MapPin, QrCode, AlertTriangle, Calendar, User, LogOut, Trash2, History, Clock } from 'lucide-react'
@@ -188,6 +188,11 @@ function ReportForm({ profile, locations }: { profile: Profile | null; locations
   const [uploading, setUploading] = useState(false)
   // Images picked while still filling the form (no report_id yet); uploaded on submit.
   const [pending, setPending] = useState<{ file: File; url: string }[]>([])
+  const [photoWarn, setPhotoWarn] = useState(false)
+  // Mirror pending into a ref so the unmount cleanup revokes the current URLs.
+  const pendingRef = useRef(pending)
+  pendingRef.current = pending
+  useEffect(() => () => { pendingRef.current.forEach(p => URL.revokeObjectURL(p.url)) }, [])
 
   function addPending(files: FileList | null) {
     if (!files) return
@@ -226,6 +231,7 @@ function ReportForm({ profile, locations }: { profile: Profile | null; locations
 
     // Upload any images the inspector attached while filling the form.
     const uploaded: ReportPhoto[] = []
+    let failed = 0
     if (newReportId && pending.length > 0) {
       for (const { file } of pending) {
         const pf = new FormData()
@@ -233,11 +239,13 @@ function ReportForm({ profile, locations }: { profile: Profile | null; locations
         pf.append('file', file)
         const pres = await fetch('/api/inspector/report-photos', { method: 'POST', body: pf })
         if (pres.ok) uploaded.push(await pres.json())
+        else failed++
       }
       pending.forEach(p => URL.revokeObjectURL(p.url))
       setPending([])
     }
     setSaving(false)
+    setPhotoWarn(failed > 0)
     setReportId(newReportId)
     setPhotos(uploaded)
   }
@@ -268,6 +276,7 @@ function ReportForm({ profile, locations }: { profile: Profile | null; locations
   function handleDone() {
     setReportId(null)
     setPhotos([])
+    setPhotoWarn(false)
   }
 
   if (error) return (
@@ -283,6 +292,11 @@ function ReportForm({ profile, locations }: { profile: Profile | null; locations
         <div style={{ color: 'var(--success)', fontSize: '2rem', marginBottom: 6 }}>✓</div>
         <div style={{ fontWeight: 600 }}>הדיווח נשלח בהצלחה</div>
         <div style={{ color: 'var(--muted)', fontSize: '.85rem', marginTop: 4 }}>ניתן לצרף תמונות לדיווח</div>
+        {photoWarn && (
+          <div style={{ color: 'var(--warning)', fontSize: '.82rem', marginTop: 8 }}>
+            חלק מהתמונות לא הועלו. ניתן להוסיף אותן שוב למטה.
+          </div>
+        )}
       </div>
 
       <div className="card">
