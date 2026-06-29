@@ -60,6 +60,7 @@ CREATE TABLE locations (
   kashrus_certificate_url    text,
   opening_hours              text,   -- work & kashrut procedure
   inspector_arrival_time     text,   -- work & kashrut procedure
+  working_days               text,   -- comma-joined Hebrew day letters, e.g. "א,ב,ג,ד,ה"
   created_at                 timestamptz DEFAULT now(),
   updated_at                 timestamptz DEFAULT now()
 );
@@ -233,6 +234,20 @@ CREATE TABLE procedure_photos (
 );
 
 -- -------------------------------------------------------
+-- PROCEDURE CHECKS (per-location selection of kashrut checks for the procedure)
+-- Row existence = the manager ticked this check for this location; note is the
+-- per-location guidance the mashgiach sees.
+-- -------------------------------------------------------
+CREATE TABLE procedure_checks (
+  id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  location_id       uuid NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+  checklist_item_id uuid NOT NULL REFERENCES checklist_items(id) ON DELETE CASCADE,
+  note              text,
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (location_id, checklist_item_id)
+);
+
+-- -------------------------------------------------------
 -- SCAN CORRECTIONS (inspector "forgot to scan out" requests)
 -- On approval, apply_scan_correction() creates the entry+exit visit_logs at the
 -- estimated times (flagged visit_logs.manual_correction = true).
@@ -287,6 +302,8 @@ ALTER TABLE push_subscriptions  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE documents           ENABLE ROW LEVEL SECURITY;
 -- procedure_photos: RLS on with no policies; access via service-role routes only.
 ALTER TABLE procedure_photos    ENABLE ROW LEVEL SECURITY;
+-- procedure_checks: admin manages via browser client; inspector reads via service-role route.
+ALTER TABLE procedure_checks    ENABLE ROW LEVEL SECURITY;
 -- report_settings: RLS on with no policies; all access is via the admin/cron service-role routes.
 ALTER TABLE report_settings     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE scan_corrections    ENABLE ROW LEVEL SECURITY;
@@ -320,6 +337,9 @@ CREATE POLICY "vl_self_select"        ON visit_logs FOR SELECT TO authenticated 
 -- Checklist items: admin manages, mashgiach reads active
 CREATE POLICY "ci_admin_all"          ON checklist_items FOR ALL TO authenticated USING (is_admin());
 CREATE POLICY "ci_mashgiach_read"     ON checklist_items FOR SELECT TO authenticated USING (active = true);
+
+-- Procedure checks (admin manages; inspector reads via service-role route)
+CREATE POLICY "pc_admin_all"          ON procedure_checks FOR ALL TO authenticated USING (is_admin());
 
 -- Visit checks
 CREATE POLICY "vc_admin_all"          ON visit_checks FOR ALL TO authenticated USING (is_admin());

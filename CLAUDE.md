@@ -253,11 +253,21 @@ All inspector photo pickers use the shared `components/ui/PhotoAddControl.tsx`: 
 
 ## Scan corrections: two types
 
-`scan_corrections.correction_type` is `missed_checkout` or `missing_visit` (`est_entry` is nullable). `apply_scan_correction` branches: `missed_checkout` creates ONLY the exit log linked to the existing open entry (errors if none open); `missing_visit` creates both entry and exit (legacy rows default to this). Inspector form has a mode selector; admin `ScanCorrectionsTab` shows the type.
+`scan_corrections.correction_type` is `missed_checkout` or `missing_visit` (`est_entry` is nullable). `apply_scan_correction` branches: `missed_checkout` creates ONLY the exit log linked to the existing open entry (errors if none open); `missing_visit` creates both entry and exit (legacy rows default to this). Inspector form has a mode selector; admin `ScanCorrectionsTab` shows the type. Reporting it is its own inspector bottom-nav tab ("תיקון סריקה"), not under היעדרות.
+
+## Inspector deficiency photos
+
+The ליקוי form (`ReportForm` in `app/inspector/page.tsx`) lets the inspector attach images inline (camera + gallery via `PhotoAddControl`), held as pending `File[]`; on submit the report is created then the held files upload to `/api/inspector/report-photos`. The post-submit panel still allows adding/removing more.
 
 ## Work & kashrut procedure (per restaurant)
 
-Admin builds it in the "נוהל עבודה" inner tab of `LocationDetailModal`: `locations.opening_hours` + `inspector_arrival_time`, oven/appliance photos with a note each (`procedure_photos` table + `procedure-photos` bucket, via `/api/admin/procedure-photos`), and a `procedure_note` per `checklist_items` row. General text reuses `locations.kashrus_procedure`. Inspector sees it on the location page (and right after check-in) via `/api/inspector/procedure`, which assembles fields + per-location checklist (global fallback) + photos with signed URLs.
+Admin builds it in the "נוהל עבודה" inner tab of `LocationDetailModal`:
+- `locations.opening_hours`, `inspector_arrival_time`, and `working_days` (comma-joined Hebrew day letters, edited via day-toggle chips).
+- Oven/appliance photos with a note each (`procedure_photos` table + `procedure-photos` bucket, via `/api/admin/procedure-photos`); each thumbnail has an X delete.
+- Kashrut checks: a per-location **checkbox** list over the location's checklist items (own, else global), unchecked by default. Ticking a check creates a `procedure_checks(location_id, checklist_item_id, note)` row (admin-RLS `pc_admin_all`); the note is per-location. The inspector sees ONLY the ticked checks. (The older `checklist_items.procedure_note` column is superseded and unused.)
+- General text reuses `locations.kashrus_procedure`.
+
+Inspector sees it on the location page (and right after check-in) via `/api/inspector/procedure`, which returns the structured fields, working days, the ticked `procedure_checks` (joined to item name/frequency) with notes, and photos with signed URLs.
 
 ## Contract URL handling
 
