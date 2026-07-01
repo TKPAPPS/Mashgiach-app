@@ -27,6 +27,10 @@ export default function ScanCorrectionsTab({ refreshKey }: Props) {
   const [statusFilter, setStatusFilter] = useState<'all' | ScanCorrectionStatus>('pending')
   const [processingId, setProcessingId] = useState<string | null>(null)
   const [notes, setNotes] = useState<Record<string, string>>({})
+  // Rows where approval needs an admin-supplied arrival (missed-checkout with no
+  // check-in on record), and the entered arrival time per row.
+  const [needEntry, setNeedEntry] = useState<Record<string, boolean>>({})
+  const [entryTimes, setEntryTimes] = useState<Record<string, string>>({})
 
   useEffect(() => { loadAll() }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -39,16 +43,24 @@ export default function ScanCorrectionsTab({ refreshKey }: Props) {
     setLoading(false)
   }
 
-  async function review(row: ScanCorrection, status: 'approved' | 'denied') {
+  async function review(row: ScanCorrection, status: 'approved' | 'denied', adminEntry?: string) {
     setProcessingId(row.id)
     const res = await fetch('/api/admin/scan-correction', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: row.id, status, admin_notes: notes[row.id] ?? null }),
+      body: JSON.stringify({ id: row.id, status, admin_notes: notes[row.id] ?? null, admin_entry: adminEntry ?? null }),
     })
     const json = await res.json().catch(() => ({}))
-    if (!res.ok) toast(json.error ?? 'שגיאה בעדכון', 'error')
-    else { toast(status === 'approved' ? 'הבקשה אושרה והביקור נוצר' : 'הבקשה נדחתה', 'success'); loadAll() }
+    if (!res.ok) {
+      // No check-in on record: reveal an arrival field so the admin can record a
+      // full visit, instead of just showing an error.
+      if (json.needs_entry) setNeedEntry(n => ({ ...n, [row.id]: true }))
+      toast(json.error ?? 'שגיאה בעדכון', 'error')
+    } else {
+      toast(status === 'approved' ? 'הבקשה אושרה והביקור נוצר' : 'הבקשה נדחתה', 'success')
+      setNeedEntry(n => ({ ...n, [row.id]: false }))
+      loadAll()
+    }
     setProcessingId(null)
   }
 
@@ -94,14 +106,27 @@ export default function ScanCorrectionsTab({ refreshKey }: Props) {
                     <td><span className={`badge ${st.cls}`}>{st.label}</span></td>
                     <td>
                       {r.status === 'pending' ? (
-                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                          <input placeholder="הערת מנהל" value={notes[r.id] ?? ''}
-                            onChange={e => setNotes(n => ({ ...n, [r.id]: e.target.value }))}
-                            style={{ fontSize: '.8rem', padding: '5px 7px', border: '1px solid var(--border)', borderRadius: 'var(--radius)', width: 110 }} />
-                          <button className="button button--icon button--ghost" title="אשר" style={{ color: 'var(--success)' }}
-                            disabled={processingId === r.id} onClick={() => review(r, 'approved')}><Check size={15} /></button>
-                          <button className="button button--icon button--ghost" title="דחה" style={{ color: 'var(--danger)' }}
-                            disabled={processingId === r.id} onClick={() => review(r, 'denied')}><X size={15} /></button>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                            <input placeholder="הערת מנהל" value={notes[r.id] ?? ''}
+                              onChange={e => setNotes(n => ({ ...n, [r.id]: e.target.value }))}
+                              style={{ fontSize: '.8rem', padding: '5px 7px', border: '1px solid var(--border)', borderRadius: 'var(--radius)', width: 110 }} />
+                            <button className="button button--icon button--ghost" title="אשר" style={{ color: 'var(--success)' }}
+                              disabled={processingId === r.id} onClick={() => review(r, 'approved')}><Check size={15} /></button>
+                            <button className="button button--icon button--ghost" title="דחה" style={{ color: 'var(--danger)' }}
+                              disabled={processingId === r.id} onClick={() => review(r, 'denied')}><X size={15} /></button>
+                          </div>
+                          {needEntry[r.id] && (
+                            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', background: 'var(--bg-subtle, #f8fafc)', padding: '6px', borderRadius: 'var(--radius)' }}>
+                              <span style={{ fontSize: '.72rem', color: 'var(--muted)', width: '100%' }}>לא נמצאה כניסה במערכת. הזן זמן כניסה כדי לרשום ביקור מלא.</span>
+                              <input type="datetime-local" value={entryTimes[r.id] ?? ''}
+                                onChange={e => setEntryTimes(t => ({ ...t, [r.id]: e.target.value }))}
+                                style={{ fontSize: '.8rem', padding: '5px 7px', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }} />
+                              <button className="button button--sm button--primary" type="button"
+                                disabled={processingId === r.id || !entryTimes[r.id]}
+                                onClick={() => review(r, 'approved', entryTimes[r.id])}>אשר עם זמן כניסה</button>
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <span className="textSm textMuted">{r.admin_notes ?? '-'}</span>

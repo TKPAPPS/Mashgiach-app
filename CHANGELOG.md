@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-07-01: Scan-correction approvals - crash fix + admin-supplied arrival
+
+Two rounds of fixes to the "תיקוני סריקה" admin approval flow.
+
+**Crash (root cause):** the route assigned `service.rpc` to a variable and called it unbound,
+so supabase-js threw `TypeError: Cannot read properties of undefined (reading 'rest')` before
+the RPC ran. Every approve 500'd (deny worked, it uses a bound call). Fixed by calling rpc as a
+bound method on a cast client, in both `app/api/admin/scan-correction/route.ts` and the same
+latent bug in `app/api/admin/absence-status/route.ts`.
+
+**Admin-supplied arrival:** a missed-checkout only completes a forgotten exit onto an existing
+check-in. When the inspector has no check-in on record, approval now reveals a "זמן כניסה" field
+in `ScanCorrectionsTab`; the admin enters an arrival and the request is recorded as a full visit
+(entry + exit). The route accepts `admin_entry` (parsed as Asia/Bangkok, validated before the
+exit), writes it to `est_entry`, and the `apply_scan_correction` function falls back to creating
+both logs when no open check-in exists. Route also returns `needs_entry: true` on that case.
+
 ## 2026-07-01: Fix scan-correction approval failing with "שגיאה בעדכון"
 
 Approving a missed-checkout correction failed once the inspector scanned again on a later

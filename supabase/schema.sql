@@ -254,8 +254,9 @@ CREATE TABLE procedure_checks (
 -- missed_checkout closes the entry that was open AS OF est_exit: the latest entry
 -- at or before est_exit with no exit between it and est_exit. Exits from later,
 -- unrelated visits do not count as closing it, so a checkout missed on a past day
--- stays approvable after the inspector scans again. (The function body lives in a
--- migration, not here.)
+-- stays approvable after the inspector scans again. If there is no open check-in
+-- but est_entry has been set (an admin supplied an arrival on approval), it records
+-- a full visit (entry + exit) instead. (The function body lives in a migration.)
 -- -------------------------------------------------------
 CREATE TABLE scan_corrections (
   id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
