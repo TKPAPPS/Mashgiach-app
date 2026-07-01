@@ -38,9 +38,20 @@ async function handlePatch(req: NextRequest) {
     const rpc = service.rpc as unknown as (
       fn: 'apply_scan_correction',
       args: { p_id: string; p_reviewer: string },
-    ) => Promise<{ data: unknown; error: unknown }>
+    ) => Promise<{ data: unknown; error: { message?: string } | null }>
     const { error: rpcError } = await rpc('apply_scan_correction', { p_id: id, p_reviewer: admin.id })
-    if (rpcError) return NextResponse.json({ error: 'שגיאה באישור הבקשה' }, { status: 500 })
+    if (rpcError) {
+      // A missed-checkout only adds a forgotten exit onto an existing check-in.
+      // When the inspector has no open check-in to close, tell the admin plainly
+      // (and point them at the right correction type) instead of a generic error.
+      const noOpenEntry = (rpcError.message ?? '').includes('no open check-in')
+      return NextResponse.json(
+        { error: noOpenEntry
+            ? 'לא נמצאה כניסה פתוחה לסגירה. אם לא נרשמה כניסה כלל, יש לשלוח בקשת "ביקור חסר".'
+            : 'שגיאה באישור הבקשה' },
+        { status: noOpenEntry ? 409 : 500 },
+      )
+    }
     if (admin_notes != null) {
       await service.from('scan_corrections').update({ admin_notes: String(admin_notes).slice(0, 2000) }).eq('id', id)
     }
