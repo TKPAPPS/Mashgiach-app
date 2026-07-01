@@ -25,12 +25,17 @@ export async function POST(req: NextRequest) {
   const service = createServiceClient()
   // The Database type intentionally leaves Functions empty (expanding it makes
   // Supabase's generic relationship inference degrade), so type this RPC locally.
-  const rpc = service.rpc as unknown as (
-    fn: 'apply_absence_status',
-    args: { p_id: string; p_status: string },
-  ) => Promise<{ data: AbsenceStatusResult[] | null; error: unknown }>
+  // Cast the client, not the method: pulling `service.rpc` into a variable
+  // detaches it from the client, so supabase-js loses `this` and throws "Cannot
+  // read properties of undefined (reading 'rest')". Call it as a bound method.
+  const svc = service as unknown as {
+    rpc: (
+      fn: 'apply_absence_status',
+      args: { p_id: string; p_status: string },
+    ) => Promise<{ data: AbsenceStatusResult[] | null; error: unknown }>
+  }
 
-  const { data, error } = await rpc('apply_absence_status', { p_id: id, p_status: admin_status })
+  const { data, error } = await svc.rpc('apply_absence_status', { p_id: id, p_status: admin_status })
   if (error || !data?.[0]) {
     return NextResponse.json({ error: 'שגיאה בעדכון סטטוס' }, { status: 500 })
   }

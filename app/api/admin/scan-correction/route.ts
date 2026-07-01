@@ -34,12 +34,17 @@ async function handlePatch(req: NextRequest) {
 
   if (status === 'approved') {
     // The Database type intentionally leaves Functions empty, so type this RPC
-    // locally (mirrors the apply_absence_status route).
-    const rpc = service.rpc as unknown as (
-      fn: 'apply_scan_correction',
-      args: { p_id: string; p_reviewer: string },
-    ) => Promise<{ data: unknown; error: { message?: string } | null }>
-    const { error: rpcError } = await rpc('apply_scan_correction', { p_id: id, p_reviewer: admin.id })
+    // locally (mirrors the apply_absence_status route). Cast the client, not the
+    // method: pulling `service.rpc` into a variable detaches it from the client,
+    // so supabase-js loses `this` and throws "Cannot read properties of undefined
+    // (reading 'rest')". Call it as a bound method instead.
+    const svc = service as unknown as {
+      rpc: (
+        fn: 'apply_scan_correction',
+        args: { p_id: string; p_reviewer: string },
+      ) => Promise<{ data: unknown; error: { message?: string } | null }>
+    }
+    const { error: rpcError } = await svc.rpc('apply_scan_correction', { p_id: id, p_reviewer: admin.id })
     if (rpcError) {
       // A missed-checkout only adds a forgotten exit onto an existing check-in.
       // When the inspector has no open check-in to close, tell the admin plainly
