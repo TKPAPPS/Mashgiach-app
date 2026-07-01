@@ -253,7 +253,7 @@ All inspector photo pickers use the shared `components/ui/PhotoAddControl.tsx`: 
 
 ## Scan corrections: two types
 
-`scan_corrections.correction_type` is `missed_checkout` or `missing_visit` (`est_entry` is nullable). `apply_scan_correction` branches: `missed_checkout` creates ONLY the exit log linked to the existing open entry (errors if none open); `missing_visit` creates both entry and exit (legacy rows default to this). Inspector form has a mode selector; admin `ScanCorrectionsTab` shows the type. Reporting it is its own inspector bottom-nav tab ("תיקון סריקה"), not under היעדרות.
+`scan_corrections.correction_type` is `missed_checkout` or `missing_visit` (`est_entry` is nullable). `apply_scan_correction` branches: `missed_checkout` closes the entry that was open as of `est_exit` (latest entry at or before `est_exit` with no exit between it and `est_exit`) by creating ONLY the exit log. If no such open entry exists but `est_entry` has been set (an admin supplied an arrival on approval, restricted to this type), it records a full visit (entry + exit) instead; otherwise it raises `no open check-in found` and the route returns 409 with `needs_entry: true` so the admin UI can prompt for an arrival. `missing_visit` creates both entry and exit (legacy rows default to this). Inspector form has a mode selector; admin `ScanCorrectionsTab` shows the type. Reporting it is its own inspector bottom-nav tab ("תיקון סריקה"), not under היעדרות.
 
 ## Inspector deficiency photos
 

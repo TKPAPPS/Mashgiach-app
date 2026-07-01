@@ -26,22 +26,25 @@ async function handlePatch(req: NextRequest) {
 
   const service = createServiceClient()
 
-  const { data: existing } = await service.from('scan_corrections').select('status, est_exit').eq('id', id).single()
+  const { data: existing } = await service.from('scan_corrections').select('status, est_exit, correction_type').eq('id', id).single()
   if (!existing) return NextResponse.json({ error: 'הבקשה לא נמצאה' }, { status: 404 })
   if (existing.status !== 'pending') {
     return NextResponse.json({ error: 'הבקשה כבר טופלה' }, { status: 409 })
   }
 
   if (status === 'approved') {
-    // Optional admin-supplied arrival for a missed-checkout with no check-in on
-    // record. datetime-local carries no zone; inspectors/admins are in Bangkok,
-    // so interpret it as Asia/Bangkok (UTC+7). Written to est_entry so the RPC can
-    // record a full visit without any signature change.
-    if (admin_entry != null && admin_entry !== '') {
+    // Optional admin-supplied arrival, only for a missed-checkout with no check-in
+    // on record. Restricted to that type so it can never overwrite the arrival a
+    // missing_visit already carries from the inspector. datetime-local carries no
+    // zone; inspectors/admins are in Bangkok, so interpret it as Asia/Bangkok
+    // (UTC+7). Written to est_entry so the RPC can record a full visit with no
+    // signature change.
+    if (admin_entry != null && admin_entry !== '' && existing.correction_type === 'missed_checkout') {
       const m = String(admin_entry).match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})(:\d{2})?$/)
       const entryMs = m ? Date.parse(`${m[2] ? admin_entry : `${admin_entry}:00`}+07:00`) : NaN
       const exitMs = Date.parse(existing.est_exit as string)
       if (isNaN(entryMs)) return NextResponse.json({ error: 'זמן כניסה לא תקין' }, { status: 400 })
+      if (isNaN(exitMs)) return NextResponse.json({ error: 'שגיאה באישור הבקשה' }, { status: 500 })
       if (entryMs > Date.now() + 60_000) return NextResponse.json({ error: 'לא ניתן לדווח על זמן עתידי' }, { status: 400 })
       if (entryMs >= exitMs) return NextResponse.json({ error: 'זמן הכניסה חייב להיות לפני זמן היציאה' }, { status: 400 })
       await service.from('scan_corrections').update({ est_entry: new Date(entryMs).toISOString() }).eq('id', id)
