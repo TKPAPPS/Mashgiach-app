@@ -6,6 +6,16 @@ import { requireAdmin } from '@/lib/supabase/requireAdmin'
 // which creates the entry/exit visit_logs at the estimated times; denying just
 // marks the row. Only pending requests can transition.
 export async function PATCH(req: NextRequest) {
+  try {
+    return await handlePatch(req)
+  } catch {
+    // Without this, an uncaught throw returns a non-JSON 500 that the client
+    // surfaces as the generic "שגיאה בעדכון", hiding the real cause.
+    return NextResponse.json({ error: 'שגיאה בעדכון הבקשה' }, { status: 500 })
+  }
+}
+
+async function handlePatch(req: NextRequest) {
   const admin = await requireAdmin()
   if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 

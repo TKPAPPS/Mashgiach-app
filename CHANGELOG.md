@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-07-01: Fix scan-correction approval failing with "שגיאה בעדכון"
+
+Approving a missed-checkout correction failed once the inspector scanned again on a later
+day. The `apply_scan_correction` DB function looked for an entry with no exit anywhere after
+it, so every past entry looked closed and it raised `no open check-in found`.
+
+- **DB migration `fix_apply_scan_correction_bounded_open_entry`:** the missed_checkout lookup
+  now closes the entry that was open as of `est_exit` (latest entry at or before `est_exit`
+  with no exit between it and `est_exit`). Later, unrelated exits no longer count as closing
+  it. `missing_visit` branch and grants unchanged.
+- **`app/api/admin/scan-correction/route.ts`:** wrapped the handler in try/catch returning a
+  generic Hebrew 500, so an uncaught throw no longer masks as the generic client fallback.
+- **`supabase/schema.sql`:** documented the bounded open-entry semantics.
+
 ## [Phase 4]: 2026-05-26: Contract signed URLs, deficiency notes, date filters, inactive locations, checklist grouping
 
 ### Phase 4 summary

@@ -251,6 +251,11 @@ CREATE TABLE procedure_checks (
 -- SCAN CORRECTIONS (inspector "forgot to scan out" requests)
 -- On approval, apply_scan_correction() creates the entry+exit visit_logs at the
 -- estimated times (flagged visit_logs.manual_correction = true).
+-- missed_checkout closes the entry that was open AS OF est_exit: the latest entry
+-- at or before est_exit with no exit between it and est_exit. Exits from later,
+-- unrelated visits do not count as closing it, so a checkout missed on a past day
+-- stays approvable after the inspector scans again. (The function body lives in a
+-- migration, not here.)
 -- -------------------------------------------------------
 CREATE TABLE scan_corrections (
   id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
