@@ -287,6 +287,10 @@ CREATE TABLE report_settings (
   recipients     text[] NOT NULL DEFAULT '{}',
   sections       text[] NOT NULL DEFAULT '{time_per_restaurant,deficiencies,checklist_details}',
   last_sent_date date,                                    -- Bangkok date of last send; idempotency guard
+  -- Monthly summary (sent on the 1st at 09:00 Bangkok, to the same recipients as the daily report)
+  monthly_enabled         boolean NOT NULL DEFAULT false,
+  monthly_sections        text[]  NOT NULL DEFAULT '{time_per_restaurant,deficiencies,checklist_details}',
+  monthly_last_sent_month text,                           -- 'YYYY-MM' Bangkok of last monthly send; idempotency guard
   updated_at     timestamptz NOT NULL DEFAULT now()
 );
 

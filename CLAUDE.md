@@ -328,6 +328,28 @@ Forms using `defaultValue` must have `key={location.updated_at ?? 'loading'}` so
 - Never `await createServiceClient()`: it is synchronous.
 - Never use the em dash character (Unicode U+2014) in any UI copy, error messages, buttons, tooltips, labels, modal titles, push notification bodies, comments, or documentation.
 
+## Scheduled email reports (daily + monthly)
+
+Two manager reports, both configured from the single-row `report_settings` table and edited in
+`components/admin/ReportSettings.tsx` (two cards). Recipients (`recipients text[]`) are shared
+by both. Emails are Hebrew/RTL, inline-styled for Gmail, sent via `sendReportEmail()` (Resend).
+
+- **Daily** — summarizes the previous Bangkok day. Route `app/api/cron/daily-report/route.ts`,
+  builder `buildDailyReport()` in `lib/utils/dailyReport.ts`. Gated on `send_time` (default
+  10:00) + `last_sent_date`.
+- **Monthly** — summarizes the previous Bangkok month, sent on the 1st at 09:00. Route
+  `app/api/cron/monthly-report/route.ts`, builder `buildMonthlyReport()` in the same file.
+  Gated on day-of-month/hour constants + `monthly_last_sent_month` (idempotency). Columns:
+  `monthly_enabled`, `monthly_sections`, `monthly_last_sent_month`. Content is aggregate: totals
+  per inspector/restaurant, a dated deficiency list, and a per-restaurant checklist *summary*
+  (a full month of per-visit checklist detail would be enormous, so the daily `checklist_details`
+  key renders as counts, not detail, in the monthly report).
+
+Both routes are self-gating and idempotent, hit hourly by an external cron (cron-job.org), auth
+via `CRON_SECRET` (`Authorization: Bearer <secret>` or `?secret=`), with `?force=1` to bypass
+the schedule for testing. Each report needs its own cron-job.org entry (one URL each). Test-send
+routes: `.../report-settings/test` (daily) and `.../report-settings/monthly-test` (monthly).
+
 ## Known lint patterns (future cleanup)
 
 13+ files use `useEffect(() => { loadFn() }, [])` with async inner functions triggering `react-hooks/exhaustive-deps` warnings. The pattern is intentional (load-once on mount). Deferred to a dedicated cleanup phase.

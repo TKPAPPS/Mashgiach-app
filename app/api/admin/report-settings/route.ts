@@ -37,7 +37,15 @@ export async function PUT(req: NextRequest) {
     ? (body.sections as unknown[]).map(String).filter((s): s is ReportSection => VALID_SECTIONS.includes(s as ReportSection))
     : []
 
-  if (enabled && recipients.length === 0) {
+  const monthly_enabled = !!body.monthly_enabled
+  const monthly_sections = Array.isArray(body.monthly_sections)
+    ? (body.monthly_sections as unknown[]).map(String).filter((s): s is ReportSection => VALID_SECTIONS.includes(s as ReportSection))
+    : []
+
+  // Monthly recipients are shared with the daily report, so the daily "enabled"
+  // list is what the monthly send uses. Require at least one recipient whenever
+  // either report is enabled.
+  if ((enabled || monthly_enabled) && recipients.length === 0) {
     return NextResponse.json({ error: 'יש להזין לפחות נמען אחד תקין' }, { status: 400 })
   }
 
@@ -46,7 +54,7 @@ export async function PUT(req: NextRequest) {
   if (!row) return NextResponse.json({ error: 'שגיאה בטעינת ההגדרות' }, { status: 500 })
 
   const { data, error } = await service.from('report_settings')
-    .update({ enabled, send_time, recipients, sections, updated_at: new Date().toISOString() })
+    .update({ enabled, send_time, recipients, sections, monthly_enabled, monthly_sections, updated_at: new Date().toISOString() })
     .eq('id', row.id).select().single()
 
   if (error) return NextResponse.json({ error: 'שגיאה בשמירה' }, { status: 500 })

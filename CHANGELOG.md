@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-07-16: Monthly summary email report
+
+Added a monthly manager report alongside the existing daily one. It is sent on the 1st of each
+month at 09:00 (Asia/Bangkok) and summarizes the whole previous month, to the same recipients as
+the daily report.
+
+**Content (aggregate-oriented):** overview totals, activity per משגיח and מסעדה (check-ins,
+check-outs, total hours), a dated ליקויים/הערות list, and a per-restaurant checklist completion
+summary (visits with checks + total items). Unlike the daily report it does not list every
+per-visit checklist item, which over a month would be enormous.
+
+**Implementation:**
+- `report_settings` gained `monthly_enabled`, `monthly_sections`, `monthly_last_sent_month`
+  (YYYY-MM Bangkok idempotency guard). Recipients are shared with the daily report.
+- `lib/utils/dailyReport.ts`: new `buildMonthlyReport()` plus helpers `prevMonthWindow`,
+  `bangkokDayOfMonth`, `bangkokMonthKey`, reusing the daily entry/exit pairing and formatting.
+- New route `app/api/cron/monthly-report/route.ts`: same `CRON_SECRET` auth, self-gates on the
+  1st at 09:00, `?force=1` to test. Needs its own hourly cron-job.org entry.
+- New admin test route `app/api/admin/report-settings/monthly-test/route.ts` and a "דוח חודשי
+  למנהל" card in `ReportSettings.tsx` (enable toggle, section checkboxes, send-test button).
+- `report-settings` PUT persists the monthly fields; recipients required when either report is on.
+
 ## 2026-07-01: Scan-correction approvals - crash fix + admin-supplied arrival
 
 Two rounds of fixes to the "תיקוני סריקה" admin approval flow.

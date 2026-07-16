@@ -261,6 +261,9 @@ export type ReportSettings = {
   recipients: string[]
   sections: ReportSection[]
   last_sent_date: string | null
+  monthly_enabled: boolean
+  monthly_sections: ReportSection[]
+  monthly_last_sent_month: string | null   // 'YYYY-MM', Asia/Bangkok
   updated_at: string
 }
 

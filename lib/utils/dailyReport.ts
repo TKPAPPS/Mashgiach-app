@@ -21,6 +21,16 @@ export function bangkokHour(now: Date = new Date()): number {
   return Number(new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', hour12: false }).format(now).slice(0, 2))
 }
 
+// Day of month (1-31) in Bangkok.
+export function bangkokDayOfMonth(now: Date = new Date()): number {
+  return Number(new Intl.DateTimeFormat('en-CA', { timeZone: TZ, day: '2-digit' }).format(now))
+}
+
+// Bangkok month key 'YYYY-MM' for `now` (idempotency guard for the monthly send).
+export function bangkokMonthKey(now: Date = new Date()): string {
+  return bangkokDateStr(now).slice(0, 7)
+}
+
 function bangkokDayWindow(dateStr: string): { startIso: string; endIso: string } {
   // Bangkok is UTC+7 year round (no DST), so the offset is constant.
   const startMs = new Date(`${dateStr}T00:00:00+07:00`).getTime()
@@ -43,6 +53,38 @@ function fmtMinutes(mins: number): string {
 function fmtHebrewDate(dateStr: string): string {
   return new Intl.DateTimeFormat('he-IL', { timeZone: TZ, day: 'numeric', month: 'long', year: 'numeric' })
     .format(new Date(`${dateStr}T12:00:00+07:00`))
+}
+
+// Short day + month (e.g. "5 ביולי") for a monthly report row, in Bangkok time.
+function fmtDate(iso: string): string {
+  return new Intl.DateTimeFormat('he-IL', { timeZone: TZ, day: 'numeric', month: 'long' }).format(new Date(iso))
+}
+
+// Hebrew "month year" label (e.g. "יולי 2026") for a 1-based month.
+function fmtHebrewMonth(year: number, month: number): string {
+  const mm = String(month).padStart(2, '0')
+  return new Intl.DateTimeFormat('he-IL', { timeZone: TZ, month: 'long', year: 'numeric' })
+    .format(new Date(`${year}-${mm}-15T12:00:00+07:00`))
+}
+
+// Window covering the whole Bangkok calendar month *before* `now`.
+// Returns ISO bounds plus the previous month's year/number and a Hebrew label.
+export function prevMonthWindow(now: Date = new Date()): {
+  startIso: string; endIso: string; year: number; month: number; label: string
+} {
+  const [curYear, curMonth] = bangkokMonthKey(now).split('-').map(Number)
+  const year = curMonth === 1 ? curYear - 1 : curYear
+  const month = curMonth === 1 ? 12 : curMonth - 1
+  const mm = String(month).padStart(2, '0')
+  const curMm = String(curMonth).padStart(2, '0')
+  return {
+    // Bangkok is UTC+7 year round (no DST), so the offset is constant.
+    startIso: new Date(`${year}-${mm}-01T00:00:00+07:00`).toISOString(),
+    endIso: new Date(`${curYear}-${curMm}-01T00:00:00+07:00`).toISOString(),
+    year,
+    month,
+    label: fmtHebrewMonth(year, month),
+  }
 }
 
 function esc(s: string): string {
@@ -227,6 +269,217 @@ export async function buildDailyReport(
     <h1 style="font-size:20px;margin:0 0 2px;text-align:right;direction:rtl;">דוח פעילות יומי</h1>
     <p style="${styles.muted};margin:0 0 14px;">${fmtHebrewDate(dateStr)} (שעון בנגקוק)</p>
     ${hasActivity ? parts.join('\n') : `<p style="${styles.muted}">לא נרשמה פעילות ביום זה.</p>`}
+    <p style="${styles.muted};margin-top:24px;border-top:1px solid #e2e8f0;padding-top:12px;">הופק אוטומטית על ידי מערכת Mashgiach.</p>
+  </div>
+</body></html>`
+
+  return { subject, html }
+}
+
+type ChecklistLocAgg = { locName: string; visits: Set<string>; items: number }
+
+// Builds the monthly manager summary for a whole Asia/Bangkok calendar month.
+// The window is [startIso, endIso). `label` is the Hebrew "month year" title.
+// Aggregate-oriented (a full month of raw per-visit checklist detail would be
+// enormous): activity totals, a dated deficiency list, and a per-restaurant
+// checklist completion summary. Sections reuse the daily `ReportSection` keys.
+export async function buildMonthlyReport(
+  service: Service,
+  startIso: string,
+  endIso: string,
+  label: string,
+  sections: ReportSection[],
+): Promise<{ subject: string; html: string }> {
+  const wantChecks = sections.includes('checklist_details')
+  const wantDefs = sections.includes('deficiencies')
+
+  const [{ data: logsData }, { data: checksData }, { data: defsData }] = await Promise.all([
+    service.from('visit_logs')
+      .select('id,action_type,location_id,inspector_id,created_at,internal_status,inspector:profiles(id,full_name),location:locations(id,name,city)')
+      .gte('created_at', startIso).lt('created_at', endIso)
+      .order('created_at', { ascending: true }),
+    wantChecks
+      ? service.from('visit_checks')
+          .select('id,visit_log_id,item_name,note,created_at,location:locations(id,name)')
+          .gte('created_at', startIso).lt('created_at', endIso)
+          .order('created_at', { ascending: true })
+      : Promise.resolve({ data: [] as VisitCheck[] }),
+    wantDefs
+      ? service.from('deficiency_reports')
+          .select('id,report_type,description,created_at,location_id,inspector:profiles(id,full_name),location:locations(id,name,city)')
+          .gte('created_at', startIso).lt('created_at', endIso)
+          .order('created_at', { ascending: true })
+      : Promise.resolve({ data: [] as DeficiencyReport[] }),
+  ])
+
+  const logs = (logsData ?? []) as VisitLog[]
+  const checks = (checksData ?? []) as VisitCheck[]
+  const defs = (defsData ?? []) as DeficiencyReport[]
+
+  // Per inspector, then per restaurant: entry/exit counts and total time. Same
+  // aggregation as the daily report, only the window is a whole month.
+  const perInspector = new Map<string, { name: string; locs: Map<string, LocAgg> }>()
+  const ensureLoc = (inspId: string, inspName: string, locId: string, locName: string): LocAgg => {
+    let ins = perInspector.get(inspId)
+    if (!ins) { ins = { name: inspName, locs: new Map() }; perInspector.set(inspId, ins) }
+    let loc = ins.locs.get(locId)
+    if (!loc) { loc = { locName, entries: 0, exits: 0, minutes: 0 }; ins.locs.set(locId, loc) }
+    return loc
+  }
+
+  for (const l of logs) {
+    if (l.internal_status !== 'success' || !l.location_id) continue
+    const loc = ensureLoc(l.inspector_id, l.inspector?.full_name ?? 'לא ידוע', l.location_id, l.location?.name ?? 'לא ידוע')
+    if (l.action_type === 'entry') loc.entries++
+    else if (l.action_type === 'exit') loc.exits++
+  }
+
+  // Total time per inspector+restaurant: pair each entry with the next exit.
+  // The < 1440 guard caps a single pairing at under a day, not the monthly sum.
+  const openEntry: Record<string, VisitLog> = {}
+  for (const l of logs) {
+    if (l.internal_status !== 'success' || !l.location_id) continue
+    const key = `${l.inspector_id}|${l.location_id}`
+    if (l.action_type === 'entry') {
+      openEntry[key] = l
+    } else if (l.action_type === 'exit' && openEntry[key]) {
+      const mins = Math.round((new Date(l.created_at).getTime() - new Date(openEntry[key].created_at).getTime()) / 60000)
+      if (mins >= 0 && mins < 1440) {
+        ensureLoc(l.inspector_id, l.inspector?.full_name ?? 'לא ידוע', l.location_id, l.location?.name ?? 'לא ידוע').minutes += mins
+      }
+      delete openEntry[key]
+    }
+  }
+
+  // Checklist completion summary: per restaurant, how many visits had checks and
+  // how many items were checked in total across the month.
+  const checklistByLoc = new Map<string, ChecklistLocAgg>()
+  for (const c of checks) {
+    const locId = c.location?.id ?? 'unknown'
+    let agg = checklistByLoc.get(locId)
+    if (!agg) { agg = { locName: c.location?.name ?? 'לא ידוע', visits: new Set(), items: 0 }; checklistByLoc.set(locId, agg) }
+    agg.visits.add(c.visit_log_id)
+    agg.items++
+  }
+
+  // Overview totals.
+  const totalEntries = [...perInspector.values()].reduce((s, ins) => s + [...ins.locs.values()].reduce((t, l) => t + l.entries, 0), 0)
+  const totalMinutes = [...perInspector.values()].reduce((s, ins) => s + [...ins.locs.values()].reduce((t, l) => t + l.minutes, 0), 0)
+  const restaurantsCovered = new Set(logs.filter(l => l.internal_status === 'success' && l.location_id).map(l => l.location_id)).size
+
+  const hasActivity = logs.length > 0 || checks.length > 0 || defs.length > 0
+
+  const styles = {
+    table: 'width:100%;border-collapse:collapse;margin:8px 0 18px;font-size:14px;direction:rtl;',
+    th: 'text-align:right;padding:8px 10px;background:#f1f5f9;border:1px solid #e2e8f0;font-weight:700;direction:rtl;',
+    td: 'text-align:right;padding:8px 10px;border:1px solid #e2e8f0;direction:rtl;',
+    h2: 'font-size:16px;margin:22px 0 4px;color:#0f172a;text-align:right;direction:rtl;',
+    muted: 'color:#64748b;font-size:13px;text-align:right;direction:rtl;',
+  }
+
+  const parts: string[] = []
+
+  // Compact overview strip.
+  parts.push(`<table dir="rtl" style="${styles.table}">
+    <tbody><tr>
+      <td style="${styles.td};background:#f8fafc;font-weight:700;">כניסות סה"כ</td><td style="${styles.td}">${totalEntries}</td>
+      <td style="${styles.td};background:#f8fafc;font-weight:700;">שעות שהייה סה"כ</td><td style="${styles.td}">${fmtMinutes(totalMinutes)}</td>
+      <td style="${styles.td};background:#f8fafc;font-weight:700;">משגיחים פעילים</td><td style="${styles.td}">${perInspector.size}</td>
+      <td style="${styles.td};background:#f8fafc;font-weight:700;">מסעדות</td><td style="${styles.td}">${restaurantsCovered}</td>
+    </tr></tbody></table>`)
+
+  if (sections.includes('time_per_restaurant')) {
+    parts.push(`<h2 style="${styles.h2}">פעילות לפי משגיח ומסעדה (חודשי)</h2>`)
+    if (perInspector.size === 0) {
+      parts.push(`<p style="${styles.muted}">לא נרשמה פעילות.</p>`)
+    } else {
+      for (const ins of [...perInspector.values()].sort((a, b) => a.name.localeCompare(b.name, 'he'))) {
+        const locs = [...ins.locs.values()].sort((a, b) => b.minutes - a.minutes)
+        const totalMin = locs.reduce((s, l) => s + l.minutes, 0)
+        const insEntries = locs.reduce((s, l) => s + l.entries, 0)
+        const insExits = locs.reduce((s, l) => s + l.exits, 0)
+        const rows = locs.map(l => `
+          <tr>
+            <td style="${styles.td}">${esc(l.locName)}</td>
+            <td style="${styles.td}">${l.entries}</td>
+            <td style="${styles.td}">${l.exits}</td>
+            <td style="${styles.td}">${fmtMinutes(l.minutes)}</td>
+          </tr>`).join('')
+        parts.push(`<p style="margin:18px 0 2px;font-weight:700;text-align:right;direction:rtl;">${esc(ins.name)}</p>
+          <table dir="rtl" style="${styles.table}">
+            <thead><tr>
+              <th style="${styles.th}">מסעדה</th>
+              <th style="${styles.th}">כניסות</th>
+              <th style="${styles.th}">יציאות</th>
+              <th style="${styles.th}">זמן שהייה (שעות:דקות)</th>
+            </tr></thead>
+            <tbody>${rows}
+              <tr>
+                <td style="${styles.td};font-weight:700;background:#f8fafc;">סך הכל</td>
+                <td style="${styles.td};font-weight:700;background:#f8fafc;">${insEntries}</td>
+                <td style="${styles.td};font-weight:700;background:#f8fafc;">${insExits}</td>
+                <td style="${styles.td};font-weight:700;background:#f8fafc;">${fmtMinutes(totalMin)}</td>
+              </tr>
+            </tbody></table>`)
+      }
+    }
+  }
+
+  if (wantDefs) {
+    parts.push(`<h2 style="${styles.h2}">ליקויי כשרות והערות שדווחו</h2>`)
+    if (defs.length === 0) {
+      parts.push(`<p style="${styles.muted}">לא דווחו ליקויים או הערות.</p>`)
+    } else {
+      const rows = defs.map(d => `
+        <tr>
+          <td style="${styles.td}">${fmtDate(d.created_at)}</td>
+          <td style="${styles.td}">${esc(d.inspector?.full_name ?? 'לא ידוע')}</td>
+          <td style="${styles.td}">${esc(d.location?.name ?? 'לא ידוע')}</td>
+          <td style="${styles.td}">${d.report_type === 'deficiency' ? 'ליקוי כשרות' : 'הערה'}</td>
+          <td style="${styles.td}">${esc(d.description ?? '')}</td>
+        </tr>`).join('')
+      parts.push(`<table style="${styles.table}">
+        <thead><tr>
+          <th style="${styles.th}">תאריך</th>
+          <th style="${styles.th}">משגיח</th>
+          <th style="${styles.th}">מסעדה</th>
+          <th style="${styles.th}">סוג</th>
+          <th style="${styles.th}">תיאור</th>
+        </tr></thead>
+        <tbody>${rows}</tbody></table>`)
+    }
+  }
+
+  if (wantChecks) {
+    parts.push(`<h2 style="${styles.h2}">סיכום בדיקות שבוצעו לפי מסעדה</h2>`)
+    if (checklistByLoc.size === 0) {
+      parts.push(`<p style="${styles.muted}">לא תועדו בדיקות.</p>`)
+    } else {
+      const rows = [...checklistByLoc.values()]
+        .sort((a, b) => b.items - a.items)
+        .map(a => `
+          <tr>
+            <td style="${styles.td}">${esc(a.locName)}</td>
+            <td style="${styles.td}">${a.visits.size}</td>
+            <td style="${styles.td}">${a.items}</td>
+          </tr>`).join('')
+      parts.push(`<table dir="rtl" style="${styles.table}">
+        <thead><tr>
+          <th style="${styles.th}">מסעדה</th>
+          <th style="${styles.th}">ביקורים עם בדיקות</th>
+          <th style="${styles.th}">סך בדיקות</th>
+        </tr></thead>
+        <tbody>${rows}</tbody></table>`)
+    }
+  }
+
+  const subject = `דוח חודשי - ${label}`
+  const html = `<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8"></head>
+<body dir="rtl" style="margin:0;background:#f8fafc;font-family:Arial,Helvetica,sans-serif;color:#0f172a;direction:rtl;">
+  <div dir="rtl" style="max-width:760px;margin:0 auto;padding:24px;direction:rtl;text-align:right;">
+    <h1 style="font-size:20px;margin:0 0 2px;text-align:right;direction:rtl;">דוח פעילות חודשי</h1>
+    <p style="${styles.muted};margin:0 0 14px;">${esc(label)} (שעון בנגקוק)</p>
+    ${hasActivity ? parts.join('\n') : `<p style="${styles.muted}">לא נרשמה פעילות בחודש זה.</p>`}
     <p style="${styles.muted};margin-top:24px;border-top:1px solid #e2e8f0;padding-top:12px;">הופק אוטומטית על ידי מערכת Mashgiach.</p>
   </div>
 </body></html>`
