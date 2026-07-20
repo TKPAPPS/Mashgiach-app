@@ -52,8 +52,10 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ location, checks, photos })
 }
 
-// An assigned inspector edits the structured procedure fields (hours, required
-// arrival time, working days). Same per-location data the admin tab edits.
+// An assigned inspector edits the procedure fields (hours, required arrival
+// time, working days, and the general kashrut procedure text). Same per-location
+// data the admin tab edits. Only the keys present in the body are updated, so
+// saving one card never clears another card's fields.
 export async function PATCH(req: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -68,12 +70,21 @@ export async function PATCH(req: NextRequest) {
     .select('id').eq('inspector_id', user.id).eq('location_id', location_id).maybeSingle()
   if (!assignment) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const clean = (v: unknown) => { const s = typeof v === 'string' ? v.trim() : ''; return s ? s.slice(0, 200) : null }
-  const { data, error } = await service.from('locations').update({
-    opening_hours: clean(body.opening_hours),
-    inspector_arrival_time: clean(body.inspector_arrival_time),
-    working_days: clean(body.working_days),
-  }).eq('id', location_id).select('opening_hours,inspector_arrival_time,working_days').single()
+  const clean = (v: unknown, max: number) => { const s = typeof v === 'string' ? v.trim() : ''; return s ? s.slice(0, max) : null }
+  const update: {
+    opening_hours?: string | null
+    inspector_arrival_time?: string | null
+    working_days?: string | null
+    kashrus_procedure?: string | null
+  } = {}
+  if ('opening_hours' in body) update.opening_hours = clean(body.opening_hours, 200)
+  if ('inspector_arrival_time' in body) update.inspector_arrival_time = clean(body.inspector_arrival_time, 200)
+  if ('working_days' in body) update.working_days = clean(body.working_days, 200)
+  if ('kashrus_procedure' in body) update.kashrus_procedure = clean(body.kashrus_procedure, 5000)
+  if (Object.keys(update).length === 0) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
+
+  const { data, error } = await service.from('locations').update(update)
+    .eq('id', location_id).select('opening_hours,inspector_arrival_time,working_days,kashrus_procedure').single()
   if (error) return NextResponse.json({ error: 'שגיאה בשמירה' }, { status: 500 })
 
   return NextResponse.json(data)

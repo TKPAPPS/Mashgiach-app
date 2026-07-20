@@ -8,8 +8,9 @@ location QR code. Edits are per-location and shared, so they show up in the admi
 
 **Editable (full parity with the admin tab):** opening hours, required arrival time, working
 days (day-toggle chips), appliance/oven photos (camera + gallery upload, delete, per-photo note
-via the shared `PhotoAddControl`), and the kashrut-checks list (tick/untick over the location's
-candidate checklist items, plus a per-check note). Checks are tick/untick only, no new items.
+via the shared `PhotoAddControl`), the kashrut-checks list (tick/untick over the location's
+candidate checklist items, plus a per-check note), and the general נוהל כשרות text
+(`locations.kashrus_procedure`, now an editable textarea). Checks are tick/untick only, no new items.
 
 **QR:** a "הצג QR" section renders `QRCodeSVG` for `location.qr_code` with a download-PNG button
 (offscreen `QRCodeCanvas` at 600px), mirroring the admin Locations tab.

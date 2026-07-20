@@ -138,7 +138,9 @@ export default function InspectorLocationPage({ params }: { params: Promise<{ id
   const [openingHours, setOpeningHours] = useState('')
   const [arrivalTime, setArrivalTime] = useState('')
   const [workingDays, setWorkingDays] = useState<string[]>([])
+  const [kashrusProcedure, setKashrusProcedure] = useState('')
   const [savingFields, setSavingFields] = useState(false)
+  const [savingKashrus, setSavingKashrus] = useState(false)
   // Note edit buffers (keys: `check-<itemId>` / `photo-<photoId>`).
   const [noteEdits, setNoteEdits] = useState<Record<string, string>>({})
   const [newPhotoNote, setNewPhotoNote] = useState('')
@@ -177,6 +179,7 @@ export default function InspectorLocationPage({ params }: { params: Promise<{ id
     setOpeningHours(l.opening_hours ?? '')
     setArrivalTime(l.inspector_arrival_time ?? '')
     setWorkingDays(l.working_days ? l.working_days.split(',').filter(Boolean) : [])
+    setKashrusProcedure(l.kashrus_procedure ?? '')
     setLoading(false)
 
     // Procedure appliance photos + ticked checks (signed URLs from the server).
@@ -221,6 +224,20 @@ export default function InspectorLocationPage({ params }: { params: Promise<{ id
       toast('הנוהל נשמר', 'success')
     } else toast('שגיאה בשמירה', 'error')
     setSavingFields(false)
+  }
+
+  async function saveKashrus() {
+    setSavingKashrus(true)
+    const res = await fetch('/api/inspector/procedure', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ location_id: id, kashrus_procedure: kashrusProcedure }),
+    })
+    if (res.ok) {
+      const d = await res.json()
+      setLocation(prev => prev ? { ...prev, ...d } as Location : prev)
+      toast('נוהל הכשרות נשמר', 'success')
+    } else toast('שגיאה בשמירה', 'error')
+    setSavingKashrus(false)
   }
 
   async function toggleCheck(itemId: string) {
@@ -449,25 +466,29 @@ export default function InspectorLocationPage({ params }: { params: Promise<{ id
           </div>
         </div>
 
-        {/* Kashrus procedure */}
-        {(location.kashrus_procedure || location.kashrus_certificate_url) && (
-          <div className="card">
-            <div className="card__header"><div className="card__title">נוהל כשרות</div></div>
-            <div className="card__body">
-              {location.kashrus_procedure && (
-                <p style={{ fontSize: '.88rem', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
-                  {location.kashrus_procedure}
-                </p>
-              )}
-              {location.kashrus_certificate_url && (
-                <a href={location.kashrus_certificate_url} target="_blank" rel="noreferrer"
-                  className="button button--ghost button--sm" style={{ marginTop: 10 }}>
-                  <ExternalLink size={13} /> תעודת כשרות
-                </a>
-              )}
+        {/* Kashrus procedure (editable) */}
+        <div className="card">
+          <div className="card__header"><div className="card__title">נוהל כשרות</div></div>
+          <div className="card__body" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <textarea
+              value={kashrusProcedure}
+              onChange={e => setKashrusProcedure(e.target.value)}
+              placeholder="פרט את נוהל הכשרות למקום זה..."
+              rows={5}
+              style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '8px 10px', fontSize: '.88rem', lineHeight: 1.6, resize: 'vertical' }} />
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button className="button button--primary" type="button" disabled={savingKashrus} onClick={saveKashrus}>
+                {savingKashrus ? <span className="spinner" style={{ width: 16, height: 16 }} /> : 'שמור'}
+              </button>
             </div>
+            {location.kashrus_certificate_url && (
+              <a href={location.kashrus_certificate_url} target="_blank" rel="noreferrer"
+                className="button button--ghost button--sm">
+                <ExternalLink size={13} /> תעודת כשרות
+              </a>
+            )}
           </div>
-        )}
+        </div>
 
         {/* Checklist */}
         {checklistItems.length > 0 && (
