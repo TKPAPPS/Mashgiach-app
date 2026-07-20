@@ -36,9 +36,9 @@ export async function GET(req: NextRequest) {
   const checks = ((pc ?? []) as unknown as PcRow[])
     .map((r) => {
       const ci = r.checklist_item
-      return ci ? { id: ci.id, name: ci.name, frequency: ci.frequency, note: r.note, sort_order: ci.sort_order } : null
+      return ci ? { id: ci.id, checklist_item_id: ci.id, name: ci.name, frequency: ci.frequency, note: r.note, sort_order: ci.sort_order } : null
     })
-    .filter((x): x is { id: string; name: string; frequency: string; note: string | null; sort_order: number } => x !== null)
+    .filter((x): x is { id: string; checklist_item_id: string; name: string; frequency: string; note: string | null; sort_order: number } => x !== null)
     .sort((a, b) => a.sort_order - b.sort_order)
 
   const { data: photoRows } = await service.from('procedure_photos')
@@ -50,4 +50,31 @@ export async function GET(req: NextRequest) {
   }))
 
   return NextResponse.json({ location, checks, photos })
+}
+
+// An assigned inspector edits the structured procedure fields (hours, required
+// arrival time, working days). Same per-location data the admin tab edits.
+export async function PATCH(req: NextRequest) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const body = await req.json()
+  const location_id = body.location_id as string | undefined
+  if (!location_id) return NextResponse.json({ error: 'Missing location_id' }, { status: 400 })
+
+  const service = createServiceClient()
+  const { data: assignment } = await service.from('inspector_locations')
+    .select('id').eq('inspector_id', user.id).eq('location_id', location_id).maybeSingle()
+  if (!assignment) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const clean = (v: unknown) => { const s = typeof v === 'string' ? v.trim() : ''; return s ? s.slice(0, 200) : null }
+  const { data, error } = await service.from('locations').update({
+    opening_hours: clean(body.opening_hours),
+    inspector_arrival_time: clean(body.inspector_arrival_time),
+    working_days: clean(body.working_days),
+  }).eq('id', location_id).select('opening_hours,inspector_arrival_time,working_days').single()
+  if (error) return NextResponse.json({ error: 'שגיאה בשמירה' }, { status: 500 })
+
+  return NextResponse.json(data)
 }

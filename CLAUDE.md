@@ -267,7 +267,9 @@ Admin builds it in the "נוהל עבודה" inner tab of `LocationDetailModal`:
 - Kashrut checks: a per-location **checkbox** list over the location's checklist items (own, else global), unchecked by default. Ticking a check creates a `procedure_checks(location_id, checklist_item_id, note)` row (admin-RLS `pc_admin_all`); the note is per-location. The inspector sees ONLY the ticked checks. (The older `checklist_items.procedure_note` column is superseded and unused.)
 - General text reuses `locations.kashrus_procedure`.
 
-Inspector sees it on the location page (and right after check-in) via `/api/inspector/procedure`, which returns the structured fields, working days, the ticked `procedure_checks` (joined to item name/frequency) with notes, and photos with signed URLs.
+Inspector sees it on the location page (and right after check-in) via `/api/inspector/procedure`, which returns the structured fields, working days, the ticked `procedure_checks` (joined to item name/frequency, plus `checklist_item_id`) with notes, and photos with signed URLs.
+
+**The assigned inspector can now also EDIT the same procedure** from the location page (not just the admin). Writes go through assignment-checked inspector routes (service role, not direct client): `PATCH /api/inspector/procedure` (structured fields), `/api/inspector/procedure-checks` (POST/DELETE tick, PATCH note; POST validates the item is a candidate for the location), and `/api/inspector/procedure-photos` (GET/POST/DELETE/PATCH, same upload security as the admin route). Checks are tick/untick over the location's candidate checklist only, not new-item creation. The location page also shows the location QR (`QRCodeSVG` + PNG download), same as the admin Locations tab. Edits are shared per-location, so admin and inspector see the same data.
 
 ## Contract URL handling
 

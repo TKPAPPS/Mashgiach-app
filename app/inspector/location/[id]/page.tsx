@@ -1,9 +1,11 @@
 'use client'
-import { useState, useEffect, use, useCallback } from 'react'
+import { useState, useEffect, use, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowRight, ExternalLink, QrCode, Camera, X, Trash2 } from 'lucide-react'
+import { ArrowRight, ExternalLink, QrCode, Camera, X, Trash2, Download } from 'lucide-react'
+import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react'
 import { formatRelative } from '@/lib/utils/format'
+import { useToast } from '@/components/ui/Toast'
 import PhotoAddControl from '@/components/ui/PhotoAddControl'
 import type { Location, VisitLog, ChecklistItem } from '@/lib/supabase/types'
 
@@ -116,18 +118,34 @@ function PhotoModal({ visitLogId, onClose }: { visitLogId: string; onClose: () =
   )
 }
 
+type ProcPhoto = { id: string; note: string | null; url: string | null }
+
 export default function InspectorLocationPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const supabase = createClient()
   const router = useRouter()
+  const { toast } = useToast()
   const [location, setLocation] = useState<Location | null>(null)
   const [recentVisits, setRecentVisits] = useState<VisitLog[]>([])
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([])
   const [loading, setLoading] = useState(true)
   const [photoCounts, setPhotoCounts] = useState<Record<string, number>>({})
   const [photoModalVisitId, setPhotoModalVisitId] = useState<string | null>(null)
-  const [procPhotos, setProcPhotos] = useState<{ id: string; note: string | null; url: string | null }[]>([])
-  const [procChecks, setProcChecks] = useState<{ id: string; name: string; frequency: string; note: string | null }[]>([])
+  const [procPhotos, setProcPhotos] = useState<ProcPhoto[]>([])
+  // Ticked procedure checks, keyed by checklist_item_id -> its note.
+  const [tickedChecks, setTickedChecks] = useState<Record<string, { note: string | null }>>({})
+  // Editable structured fields.
+  const [openingHours, setOpeningHours] = useState('')
+  const [arrivalTime, setArrivalTime] = useState('')
+  const [workingDays, setWorkingDays] = useState<string[]>([])
+  const [savingFields, setSavingFields] = useState(false)
+  // Note edit buffers (keys: `check-<itemId>` / `photo-<photoId>`).
+  const [noteEdits, setNoteEdits] = useState<Record<string, string>>({})
+  const [newPhotoNote, setNewPhotoNote] = useState('')
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [showQr, setShowQr] = useState(false)
+  const qrCanvasRef = useRef<HTMLDivElement>(null)
+  const checkBusy = useRef<Set<string>>(new Set())
 
   async function loadAll() {
     const { data: { user } } = await supabase.auth.getUser()
@@ -152,15 +170,25 @@ export default function InspectorLocationPage({ params }: { params: Promise<{ id
     }
 
     const visitList = (visits ?? []) as VisitLog[]
-    setLocation(loc as Location)
+    const l = loc as Location
+    setLocation(l)
     setRecentVisits(visitList)
     setChecklistItems(checklist)
+    setOpeningHours(l.opening_hours ?? '')
+    setArrivalTime(l.inspector_arrival_time ?? '')
+    setWorkingDays(l.working_days ? l.working_days.split(',').filter(Boolean) : [])
     setLoading(false)
 
-    // Procedure appliance photos (signed URLs from the server).
+    // Procedure appliance photos + ticked checks (signed URLs from the server).
     fetch(`/api/inspector/procedure?location_id=${id}`)
       .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d) { setProcPhotos(d.photos ?? []); setProcChecks(d.checks ?? []) } })
+      .then((d: { photos?: ProcPhoto[]; checks?: { checklist_item_id: string; note: string | null }[] } | null) => {
+        if (!d) return
+        setProcPhotos(d.photos ?? [])
+        const map: Record<string, { note: string | null }> = {}
+        for (const c of d.checks ?? []) map[c.checklist_item_id] = { note: c.note }
+        setTickedChecks(map)
+      })
       .catch(() => {})
 
     // Batch-fetch photo counts (single query)
@@ -175,6 +203,105 @@ export default function InspectorLocationPage({ params }: { params: Promise<{ id
   }
 
   useEffect(() => { loadAll() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function saveFields() {
+    setSavingFields(true)
+    const res = await fetch('/api/inspector/procedure', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        location_id: id,
+        opening_hours: openingHours,
+        inspector_arrival_time: arrivalTime,
+        working_days: workingDays.length ? workingDays.join(',') : '',
+      }),
+    })
+    if (res.ok) {
+      const d = await res.json()
+      setLocation(prev => prev ? { ...prev, ...d } as Location : prev)
+      toast('הנוהל נשמר', 'success')
+    } else toast('שגיאה בשמירה', 'error')
+    setSavingFields(false)
+  }
+
+  async function toggleCheck(itemId: string) {
+    if (checkBusy.current.has(itemId)) return
+    checkBusy.current.add(itemId)
+    try {
+      const ticked = !!tickedChecks[itemId]
+      if (ticked) {
+        const res = await fetch(`/api/inspector/procedure-checks?location_id=${id}&checklist_item_id=${itemId}`, { method: 'DELETE' })
+        if (!res.ok) { toast('שגיאה', 'error'); return }
+        setTickedChecks(prev => { const n = { ...prev }; delete n[itemId]; return n })
+      } else {
+        const res = await fetch('/api/inspector/procedure-checks', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ location_id: id, checklist_item_id: itemId }),
+        })
+        if (!res.ok) { toast('שגיאה', 'error'); return }
+        const d = await res.json()
+        setTickedChecks(prev => ({ ...prev, [itemId]: { note: d.note ?? null } }))
+      }
+    } finally {
+      checkBusy.current.delete(itemId)
+    }
+  }
+
+  async function saveCheckNote(itemId: string) {
+    const note = noteEdits[`check-${itemId}`] ?? ''
+    const res = await fetch('/api/inspector/procedure-checks', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ location_id: id, checklist_item_id: itemId, note }),
+    })
+    if (!res.ok) { toast('שגיאה', 'error'); return }
+    setTickedChecks(prev => ({ ...prev, [itemId]: { note: note || null } }))
+    setNoteEdits(prev => { const n = { ...prev }; delete n[`check-${itemId}`]; return n })
+    toast('ההערה נשמרה', 'success')
+  }
+
+  async function uploadPhotos(files: FileList | null) {
+    if (!files || files.length === 0) return
+    setUploadingPhoto(true)
+    for (const file of Array.from(files)) {
+      const form = new FormData()
+      form.append('location_id', id)
+      form.append('file', file)
+      if (newPhotoNote.trim()) form.append('note', newPhotoNote.trim())
+      const res = await fetch('/api/inspector/procedure-photos', { method: 'POST', body: form })
+      if (res.ok) { const created: ProcPhoto = await res.json(); setProcPhotos(prev => [...prev, created]) }
+      else toast('שגיאה בהעלאת התמונה', 'error')
+    }
+    setNewPhotoNote('')
+    setUploadingPhoto(false)
+  }
+
+  async function deletePhoto(photoId: string) {
+    const res = await fetch(`/api/inspector/procedure-photos?id=${photoId}`, { method: 'DELETE' })
+    if (res.ok) setProcPhotos(prev => prev.filter(p => p.id !== photoId))
+    else toast('שגיאה במחיקה', 'error')
+  }
+
+  async function savePhotoNote(photoId: string) {
+    const note = noteEdits[`photo-${photoId}`] ?? ''
+    const res = await fetch('/api/inspector/procedure-photos', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: photoId, note }),
+    })
+    if (res.ok) {
+      setProcPhotos(prev => prev.map(p => p.id === photoId ? { ...p, note: note || null } : p))
+      setNoteEdits(prev => { const n = { ...prev }; delete n[`photo-${photoId}`]; return n })
+      toast('ההערה נשמרה', 'success')
+    } else toast('שגיאה', 'error')
+  }
+
+  function downloadQr() {
+    const canvas = qrCanvasRef.current?.querySelector('canvas')
+    if (!canvas) return
+    const url = canvas.toDataURL('image/png')
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `QR-${location?.name ?? 'location'}.png`
+    a.click()
+  }
 
   if (loading) return (
     <div className="app" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100svh' }}>
@@ -215,49 +342,112 @@ export default function InspectorLocationPage({ params }: { params: Promise<{ id
           </div>
         </div>
 
-        {/* Work & kashrut procedure: hours, days, required arrival, checks, appliance photos */}
-        {(location.opening_hours || location.inspector_arrival_time || location.working_days || procChecks.length > 0 || procPhotos.length > 0) && (
-          <div className="card">
-            <div className="card__header"><div className="card__title">נוהל עבודה וכשרות</div></div>
-            <div className="card__body" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {location.opening_hours && <div><span className="textMuted textSm">שעות פתיחה: </span>{location.opening_hours}</div>}
-              {location.working_days && <div><span className="textMuted textSm">ימי עבודה: </span>{location.working_days.split(',').filter(Boolean).join(', ')}</div>}
-              {location.inspector_arrival_time && <div><span className="textMuted textSm">שעת הגעה נדרשת: </span>{location.inspector_arrival_time}</div>}
-              {procChecks.length > 0 && (
-                <div>
-                  <div className="textMuted textSm" style={{ marginBottom: 6 }}>בדיקות כשרות לביצוע</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {procChecks.map(c => (
-                      <div key={c.id} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                        <div style={{ fontSize: '.86rem', display: 'flex', alignItems: 'center', gap: 6 }}>
-                          {c.name}
-                          <span className="badge badge--muted" style={{ fontSize: '.64rem' }}>{c.frequency === 'weekly' ? 'שבועי' : 'יומי'}</span>
-                        </div>
-                        {c.note && <div style={{ fontSize: '.78rem', color: 'var(--muted)', lineHeight: 1.4 }}>{c.note}</div>}
-                      </div>
-                    ))}
-                  </div>
+        {/* Work & kashrut procedure: editable by the assigned inspector. */}
+        <div className="card">
+          <div className="card__header"><div className="card__title">נוהל עבודה וכשרות</div></div>
+          <div className="card__body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Structured fields */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <label className="field"><span>שעות פתיחה</span>
+                <input value={openingHours} onChange={e => setOpeningHours(e.target.value)} placeholder="08:00-22:00" />
+              </label>
+              <label className="field"><span>שעת הגעת משגיח נדרשת</span>
+                <input value={arrivalTime} onChange={e => setArrivalTime(e.target.value)} placeholder="08:30" />
+              </label>
+              <div className="field">
+                <span>ימי עבודה</span>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {['א','ב','ג','ד','ה','ו','ש'].map(d => {
+                    const on = workingDays.includes(d)
+                    return (
+                      <button key={d} type="button"
+                        onClick={() => setWorkingDays(prev => on ? prev.filter(x => x !== d) : [...prev, d])}
+                        className={`badge ${on ? 'badge--success' : 'badge--muted'}`}
+                        style={{ cursor: 'pointer', border: 'none', minWidth: 32, padding: '8px 0', fontSize: '.9rem' }}>
+                        {d}
+                      </button>
+                    )
+                  })}
                 </div>
-              )}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button className="button button--primary" type="button" disabled={savingFields} onClick={saveFields}>
+                  {savingFields ? <span className="spinner" style={{ width: 16, height: 16 }} /> : 'שמור'}
+                </button>
+              </div>
+            </div>
+
+            {/* Appliance / oven photos with a note each */}
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '.9rem', marginBottom: 8 }}>תמונות תנורים ומכשירי חשמל</div>
               {procPhotos.length > 0 && (
-                <div>
-                  <div className="textMuted textSm" style={{ marginBottom: 6 }}>תנורים ומכשירי חשמל</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8 }}>
-                    {procPhotos.map(p => (
-                      <a key={p.id} href={p.url ?? '#'} target="_blank" rel="noreferrer" style={{ textDecoration: 'none', color: 'inherit' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10, marginBottom: 12 }}>
+                  {procPhotos.map(p => (
+                    <div key={p.id} className="card" style={{ margin: 0, padding: 8 }}>
+                      <div style={{ position: 'relative' }}>
                         {p.url && (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={p.url} alt="" style={{ width: '100%', aspectRatio: '4/3', objectFit: 'cover', borderRadius: 8 }} />
                         )}
-                        {p.note && <div style={{ fontSize: '.78rem', marginTop: 4, lineHeight: 1.4 }}>{p.note}</div>}
-                      </a>
-                    ))}
-                  </div>
+                        <button type="button" title="מחק תמונה" onClick={() => deletePhoto(p.id)}
+                          style={{ position: 'absolute', top: 6, insetInlineEnd: 6, background: 'rgba(0,0,0,.6)', border: 'none', borderRadius: 6, color: '#fff', width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                          <X size={15} />
+                        </button>
+                      </div>
+                      <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginTop: 6 }}>
+                        <input
+                          value={noteEdits[`photo-${p.id}`] ?? (p.note ?? '')}
+                          onChange={e => setNoteEdits(prev => ({ ...prev, [`photo-${p.id}`]: e.target.value }))}
+                          placeholder="הערה לתמונה..."
+                          style={{ flex: 1, minWidth: 0, border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '4px 8px', fontSize: '.8rem' }} />
+                        {noteEdits[`photo-${p.id}`] !== undefined && noteEdits[`photo-${p.id}`] !== (p.note ?? '') && (
+                          <button className="button button--primary button--sm" style={{ padding: '4px 8px', fontSize: '.72rem' }} onClick={() => savePhotoNote(p.id)}>שמור</button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
+              <input value={newPhotoNote} onChange={e => setNewPhotoNote(e.target.value)} placeholder="הערה (אופציונלי) לתמונה הבאה"
+                style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '7px 10px', fontSize: '.82rem', marginBottom: 8 }} />
+              <PhotoAddControl onFiles={uploadPhotos} uploading={uploadingPhoto} remaining={20 - procPhotos.length} />
+            </div>
+
+            {/* Procedure checks: tick which checks apply at this location (+ note). */}
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '.9rem', marginBottom: 4 }}>בדיקות כשרות לנוהל</div>
+              <p style={{ fontSize: '.76rem', color: 'var(--muted)', margin: '0 0 8px' }}>סמן את הבדיקות הרלוונטיות למקום זה.</p>
+              {checklistItems.length === 0 ? <p className="textSm textMuted">אין פריטי בדיקה למקום זה.</p> :
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {checklistItems.map(item => {
+                  const row = tickedChecks[item.id]
+                  const checked = !!row
+                  return (
+                    <div key={item.id} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer', fontSize: '.86rem' }}>
+                        <input type="checkbox" checked={checked} onChange={() => toggleCheck(item.id)} style={{ accentColor: 'var(--primary)' }} />
+                        {item.name}
+                        <span className="badge badge--muted" style={{ fontSize: '.66rem' }}>{item.frequency === 'weekly' ? 'שבועי' : 'יומי'}</span>
+                      </label>
+                      {checked && (
+                        <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginInlineStart: 26 }}>
+                          <input
+                            value={noteEdits[`check-${item.id}`] ?? (row.note ?? '')}
+                            onChange={e => setNoteEdits(prev => ({ ...prev, [`check-${item.id}`]: e.target.value }))}
+                            placeholder="הערת נוהל (אופציונלי)..."
+                            style={{ flex: 1, minWidth: 0, border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '4px 8px', fontSize: '.8rem' }} />
+                          {noteEdits[`check-${item.id}`] !== undefined && noteEdits[`check-${item.id}`] !== (row.note ?? '') && (
+                            <button className="button button--primary button--sm" style={{ padding: '4px 8px', fontSize: '.72rem' }} onClick={() => saveCheckNote(item.id)}>שמור</button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>}
             </div>
           </div>
-        )}
+        </div>
 
         {/* Kashrus procedure */}
         {(location.kashrus_procedure || location.kashrus_certificate_url) && (
@@ -298,6 +488,37 @@ export default function InspectorLocationPage({ params }: { params: Promise<{ id
               <p className="textSm textMuted" style={{ marginTop: 10 }}>
                 סמן פריטים אלה עם יציאה מהמקום
               </p>
+            </div>
+          </div>
+        )}
+
+        {/* Location QR code (view + download) */}
+        {location.qr_code && (
+          <div className="card">
+            <div className="card__header"><div className="card__title">קוד QR של המקום</div></div>
+            <div className="card__body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {!showQr ? (
+                <button className="button button--ghost" onClick={() => setShowQr(true)}>
+                  <QrCode size={16} /> הצג QR
+                </button>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'center', background: '#fff', padding: 16, borderRadius: 'var(--radius)' }}>
+                    <QRCodeSVG value={location.qr_code} size={200} level="M" />
+                  </div>
+                  <p className="textSm textMuted" style={{ textAlign: 'center', margin: 0 }}>הדפס ותלה במקום לסריקה</p>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="button button--ghost" style={{ flex: 1 }} onClick={downloadQr}>
+                      <Download size={16} /> הורד QR (PNG)
+                    </button>
+                    <button className="button button--ghost" style={{ flex: 1 }} onClick={() => setShowQr(false)}>הסתר</button>
+                  </div>
+                  {/* Offscreen high-res canvas for the PNG download */}
+                  <div ref={qrCanvasRef} style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden', opacity: 0, pointerEvents: 'none' }}>
+                    <QRCodeCanvas value={location.qr_code} size={600} level="M" />
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}

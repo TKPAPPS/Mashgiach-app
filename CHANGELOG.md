@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-07-20: Mashgiach can edit נוהל עבודה + see the location QR
+
+The assigned inspector's location page (`app/inspector/location/[id]/page.tsx`) now lets them
+**edit** the work & kashrut procedure themselves (previously read-only), and view/download the
+location QR code. Edits are per-location and shared, so they show up in the admin נוהל עבודה tab too.
+
+**Editable (full parity with the admin tab):** opening hours, required arrival time, working
+days (day-toggle chips), appliance/oven photos (camera + gallery upload, delete, per-photo note
+via the shared `PhotoAddControl`), and the kashrut-checks list (tick/untick over the location's
+candidate checklist items, plus a per-check note). Checks are tick/untick only, no new items.
+
+**QR:** a "הצג QR" section renders `QRCodeSVG` for `location.qr_code` with a download-PNG button
+(offscreen `QRCodeCanvas` at 600px), mirroring the admin Locations tab.
+
+**Implementation:** inspector writes go through new/extended `/api/inspector/*` routes that
+authorize by assignment (via `inspector_locations`) and use the service role, matching the app's
+inspector-write rule. No DB schema or RLS changes.
+- `app/api/inspector/procedure/route.ts`: GET now also returns `checklist_item_id`; added PATCH
+  for the structured fields.
+- `app/api/inspector/procedure-checks/route.ts` (new): POST/DELETE/PATCH. POST validates the item
+  is a candidate for the location (own item or global default) before ticking.
+- `app/api/inspector/procedure-photos/route.ts` (new): clone of the admin route (20 MB cap, image
+  MIME allowlist, `sharp` re-encode, private bucket, signed URLs), authorized by assignment.
+
 ## 2026-07-16: Monthly summary email report
 
 Added a monthly manager report alongside the existing daily one. It is sent on the 1st of each
