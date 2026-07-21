@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-07-21: Fix inspector photo upload from iPhone (HEIC → 400)
+
+Uploading a photo on the inspector side could fail with a 400 ("שגיאה בהעלאת התמונה").
+Cause: iOS hands back HEIC bytes (sometimes even labeled `image/jpeg`) that the server's
+`sharp` re-encode cannot decode, so it threw "קובץ תמונה לא תקין". Fix: re-encode every
+inspector-selected image to a downscaled JPEG in the browser (canvas) BEFORE upload, via a new
+shared helper `lib/utils/image.ts` `toJpegFile()`. This converts anything the browser can render
+(including iOS HEIC) to real JPEG bytes and shrinks the payload under the serverless body limit.
+
+Applied to all inspector uploaders: the נוהל עבודה appliance photos, visit photos (location page
+modal + post-exit checklist), and deficiency-report photos. The procedure upload also now surfaces
+the server's specific error message instead of a generic toast. No server or schema changes.
+
 ## 2026-07-20: Mashgiach can edit נוהל עבודה + see the location QR
 
 The assigned inspector's location page (`app/inspector/location/[id]/page.tsx`) now lets them

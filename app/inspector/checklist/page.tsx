@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { ArrowRight, CheckCircle, AlertTriangle, Trash2 } from 'lucide-react'
 import PhotoAddControl from '@/components/ui/PhotoAddControl'
+import { toJpegFile } from '@/lib/utils/image'
 import type { ChecklistItem } from '@/lib/supabase/types'
 
 type VisitPhoto = { id: string; url: string | null }
@@ -20,7 +21,7 @@ function PhotoUpload({ visitLogId }: { visitLogId: string }) {
     for (const file of toUpload) {
       const fd = new FormData()
       fd.append('visit_log_id', visitLogId)
-      fd.append('file', file)
+      fd.append('file', await toJpegFile(file))
       const res = await fetch('/api/inspector/visit-photos', { method: 'POST', body: fd })
       if (res.ok) {
         const photo: VisitPhoto = await res.json()

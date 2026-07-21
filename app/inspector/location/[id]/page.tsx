@@ -6,6 +6,7 @@ import { ArrowRight, ExternalLink, QrCode, Camera, X, Trash2, Download } from 'l
 import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react'
 import { formatRelative } from '@/lib/utils/format'
 import { useToast } from '@/components/ui/Toast'
+import { toJpegFile } from '@/lib/utils/image'
 import PhotoAddControl from '@/components/ui/PhotoAddControl'
 import type { Location, VisitLog, ChecklistItem } from '@/lib/supabase/types'
 
@@ -36,7 +37,7 @@ function PhotoModal({ visitLogId, onClose }: { visitLogId: string; onClose: () =
     for (const file of toUpload) {
       const fd = new FormData()
       fd.append('visit_log_id', visitLogId)
-      fd.append('file', file)
+      fd.append('file', await toJpegFile(file))
       const res = await fetch('/api/inspector/visit-photos', { method: 'POST', body: fd })
       if (res.ok) {
         const photo: VisitPhoto = await res.json()
@@ -281,11 +282,11 @@ export default function InspectorLocationPage({ params }: { params: Promise<{ id
     for (const file of Array.from(files)) {
       const form = new FormData()
       form.append('location_id', id)
-      form.append('file', file)
+      form.append('file', await toJpegFile(file))
       if (newPhotoNote.trim()) form.append('note', newPhotoNote.trim())
       const res = await fetch('/api/inspector/procedure-photos', { method: 'POST', body: form })
       if (res.ok) { const created: ProcPhoto = await res.json(); setProcPhotos(prev => [...prev, created]) }
-      else toast('שגיאה בהעלאת התמונה', 'error')
+      else { const e = await res.json().catch(() => null); toast(e?.error || 'שגיאה בהעלאת התמונה', 'error') }
     }
     setNewPhotoNote('')
     setUploadingPhoto(false)

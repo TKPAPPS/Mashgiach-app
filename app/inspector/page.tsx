@@ -6,6 +6,7 @@ import { MapPin, QrCode, AlertTriangle, Calendar, User, LogOut, Trash2, History,
 import Image from 'next/image'
 import { formatRelative, formatDate } from '@/lib/utils/format'
 import PhotoAddControl from '@/components/ui/PhotoAddControl'
+import { toJpegFile } from '@/lib/utils/image'
 import type { Location, Profile, VisitLog } from '@/lib/supabase/types'
 
 type LocationWithLastVisit = Location & { lastVisit?: VisitLog }
@@ -236,7 +237,7 @@ function ReportForm({ profile, locations }: { profile: Profile | null; locations
       for (const { file } of pending) {
         const pf = new FormData()
         pf.append('report_id', newReportId)
-        pf.append('file', file)
+        pf.append('file', await toJpegFile(file))
         const pres = await fetch('/api/inspector/report-photos', { method: 'POST', body: pf })
         if (pres.ok) uploaded.push(await pres.json())
         else failed++
@@ -258,7 +259,7 @@ function ReportForm({ profile, locations }: { profile: Profile | null; locations
     for (const file of toUpload) {
       const fd = new FormData()
       fd.append('report_id', reportId)
-      fd.append('file', file)
+      fd.append('file', await toJpegFile(file))
       const res = await fetch('/api/inspector/report-photos', { method: 'POST', body: fd })
       if (res.ok) {
         const photo: ReportPhoto = await res.json()
