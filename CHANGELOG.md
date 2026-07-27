@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-07-21: Fix admin Absences tab always showing 0 requests
+
+The manager's היעדרויות tab showed "0 / אין בקשות" while pending `absence_requests` existed
+in the DB. Cause: `absence_requests` has two foreign keys to `profiles` (`inspector_id` and
+`replacement_inspector_id`), but the admin load query in `AbsencesTab.tsx` embedded the inspector
+side without a FK hint (`inspector:profiles(...)`). PostgREST cannot disambiguate two relationships
+and returns a 300, and `loadAll` discarded the error, so the tab silently rendered zero. Fix: hint
+the inspector embed (`inspector:profiles!absence_requests_inspector_id_fkey(...)`), matching the
+already-hinted replacement embed, and surface load errors (console + toast) instead of swallowing
+them. Verified against PostgREST: old embed → 300, fixed embed → 200. No schema/RLS changes.
+
 ## 2026-07-21: Fix inspector photo upload from iPhone (HEIC → 400)
 
 Uploading a photo on the inspector side could fail with a 400 ("שגיאה בהעלאת התמונה").

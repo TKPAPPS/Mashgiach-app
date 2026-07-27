@@ -49,10 +49,18 @@ export default function AbsencesTab({ refreshKey, inspectors, inspectorLocations
 
   async function loadAll() {
     setLoading(true)
-    const { data } = await supabase
+    // absence_requests has TWO foreign keys to profiles (inspector_id and
+    // replacement_inspector_id), so BOTH profile embeds must name their FK
+    // explicitly. Without the hint on `inspector`, PostgREST 300s (ambiguous)
+    // and the whole query fails, silently showing zero requests.
+    const { data, error } = await supabase
       .from('absence_requests')
-      .select('*, inspector:profiles(id,full_name), location:locations(id,name), replacement_inspector:profiles!absence_requests_replacement_inspector_id_fkey(id,full_name)')
+      .select('*, inspector:profiles!absence_requests_inspector_id_fkey(id,full_name), location:locations(id,name), replacement_inspector:profiles!absence_requests_replacement_inspector_id_fkey(id,full_name)')
       .order('created_at', { ascending: false })
+    if (error) {
+      console.error('Failed to load absence_requests:', error)
+      toast('שגיאה בטעינת הבקשות', 'error')
+    }
     setRequests((data ?? []) as AbsenceRequest[])
     setLoading(false)
   }
