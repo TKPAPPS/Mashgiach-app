@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
   if (!assignment) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { data: location } = await service.from('locations')
-    .select('id,name,opening_hours,inspector_arrival_time,working_days,kashrus_procedure')
+    .select('id,name,opening_hours,inspector_arrival_time,working_days,kashrus_procedure,menu_text,kashrut_type')
     .eq('id', location_id).single()
   if (!location) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
@@ -76,15 +76,17 @@ export async function PATCH(req: NextRequest) {
     inspector_arrival_time?: string | null
     working_days?: string | null
     kashrus_procedure?: string | null
+    menu_text?: string | null
   } = {}
   if ('opening_hours' in body) update.opening_hours = clean(body.opening_hours, 200)
   if ('inspector_arrival_time' in body) update.inspector_arrival_time = clean(body.inspector_arrival_time, 200)
   if ('working_days' in body) update.working_days = clean(body.working_days, 200)
   if ('kashrus_procedure' in body) update.kashrus_procedure = clean(body.kashrus_procedure, 5000)
+  if ('menu_text' in body) update.menu_text = clean(body.menu_text, 10000)
   if (Object.keys(update).length === 0) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
 
   const { data, error } = await service.from('locations').update(update)
-    .eq('id', location_id).select('opening_hours,inspector_arrival_time,working_days,kashrus_procedure').single()
+    .eq('id', location_id).select('opening_hours,inspector_arrival_time,working_days,kashrus_procedure,menu_text').single()
   if (error) return NextResponse.json({ error: 'שגיאה בשמירה' }, { status: 500 })
 
   return NextResponse.json(data)

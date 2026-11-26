@@ -84,3 +84,9 @@ export function gpsAlertLabel(type: string | null | undefined, distance: number 
     default: return `סריקה רחוקה: ${formatDistance(distance)}`
   }
 }
+
+export const KASHRUT_TYPE_LABELS: Record<'meat' | 'dairy' | 'fish', string> = {
+  meat: 'בשרי',
+  dairy: 'חלבי',
+  fish: 'דגים',
+}

@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-11-26: Closed city list, kashrut type, restaurant menu; modals always on top
+
+From the manager's fix list (points 9, 5 and 11).
+
+- **Cities from a closed list** (Hebrew names, Tal's choice): new `cities` table; `locations.city_id`.
+  The 12 free-text spellings were merged into 7 cities (בנגקוק, פוקט, פטייה, קופנגן, קוסמוי,
+  צ'יאנג מאי, פאי), all 47 locations linked. `locations.city` is kept but now DERIVED from `city_id`
+  by a DB trigger, so every existing reader keeps working and free text can no longer be written.
+  The location form has a required city dropdown. "ניהול ערים" now adds, renames (Hebrew + English,
+  renaming updates every location) and deletes a city, moving its locations to another city first.
+  `/api/admin/cities` rewritten (GET list with counts, POST, PATCH, DELETE with `merge_into`).
+- **Kashrut type**: `locations.kashrut_type` (`meat` / `dairy` / `fish`, one choice), labels in
+  `KASHRUT_TYPE_LABELS`. Field in the location form, coloured badge and sortable column in the
+  Locations tab, type filter, badge on the inspector location page and in the admin modal title.
+- **Menu**: `locations.menu_text` plus `location_menu_files` (private bucket `menu-files`, 10 MB, up to
+  20 files; images re-encoded to JPEG, PDFs checked by magic bytes). Shared `components/MenuSection.tsx`
+  in a new "תפריט" tab of the admin location modal and a card on the inspector location page (the
+  assigned inspector can edit, like the procedure). Routes `/api/admin/menu-files` and
+  `/api/inspector/menu-files` over `lib/utils/menuFiles.ts`; menu text for inspectors goes through
+  `PATCH /api/inspector/procedure`.
+- **Modals render into `<body>`** (portal in `components/ui/Modal.tsx`). Every `.card` has
+  `isolation: isolate`, so a modal opened from inside a card (e.g. ניהול ערים on the dashboard) was
+  painted under the cards below it.
+- Migration `location_data_cities_kashrut_menu` (additive). The old free-text meaning of
+  `locations.city` is gone; dropping the column is not needed.
+
 ## 2026-11-26: Impossible-travel alerts, GPS in the email reports, monthly report fixed
 
 From the manager's fix list (points 6 and 4), plus a bug found while testing.

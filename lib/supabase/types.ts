@@ -39,8 +39,33 @@ export type Location = {
   opening_hours: string | null
   inspector_arrival_time: string | null
   working_days: string | null
+  /** Set via city_id; locations.city is derived (Hebrew name) by a DB trigger. */
+  city_id?: string | null
+  kashrut_type?: KashrutType | null
+  menu_text?: string | null
   created_at: string
   updated_at: string
+}
+
+export type KashrutType = 'meat' | 'dairy' | 'fish'
+
+export type City = {
+  id: string
+  name_he: string
+  name_en: string | null
+  active: boolean
+  created_at: string
+}
+
+export type LocationMenuFile = {
+  id: string
+  location_id: string
+  file_path: string
+  file_name: string | null
+  mime: string
+  size_bytes: number | null
+  uploaded_by: string | null
+  created_at: string
 }
 
 export type InspectorLocation = {
@@ -284,6 +309,8 @@ export type Database = {
   public: {
     Tables: {
       profiles:            TableDef<Profile, Omit<Profile,'created_at'|'updated_at'|'vacation_days_remaining'|'start_date'|'contract_url'> & { vacation_days_remaining?: number; start_date?: string | null; contract_url?: string | null }, Partial<Profile>>
+      cities:              TableDef<City, Omit<City,'id'|'created_at'|'active'> & { active?: boolean }, Partial<Omit<City,'id'>>>
+      location_menu_files: TableDef<LocationMenuFile, Omit<LocationMenuFile,'id'|'created_at'>, Partial<LocationMenuFile>>
       locations:           TableDef<Location, Omit<Location,'id'|'created_at'|'updated_at'|'opening_hours'|'inspector_arrival_time'|'working_days'> & { id?: string; opening_hours?: string | null; inspector_arrival_time?: string | null; working_days?: string | null }, Partial<Location>>
       inspector_locations: TableDef<InspectorLocation, Omit<InspectorLocation,'id'|'created_at'>, Partial<InspectorLocation>>
       visit_logs:          TableDef<VisitLog, Omit<VisitLog,'id'|'created_at'|'inspector'|'location'>, Partial<Omit<VisitLog,'inspector'|'location'>>>

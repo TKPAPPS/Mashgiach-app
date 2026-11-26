@@ -1,5 +1,6 @@
 'use client'
 import { ReactNode, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 
 interface Props {
@@ -19,11 +20,13 @@ export default function Modal({ open, onClose, title, children, footer, size = '
     return () => window.removeEventListener('keydown', handler)
   }, [open, onClose])
 
-  if (!open) return null
+  if (!open || typeof document === 'undefined') return null
 
   const sizeClass = size === 'lg' ? 'modal--lg' : size === 'xl' ? 'modal--xl' : ''
 
-  return (
+  // Rendered into <body>: every .card is its own stacking context (isolation:
+  // isolate), so a modal left inside a card was painted under later cards.
+  return createPortal(
     <div className="modalOverlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className={`modal ${sizeClass}`} role="dialog" aria-modal="true">
         <div className="modal__header">
@@ -35,6 +38,7 @@ export default function Modal({ open, onClose, title, children, footer, size = '
         <div className="modal__body">{children}</div>
         {footer && <div className="modal__footer">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

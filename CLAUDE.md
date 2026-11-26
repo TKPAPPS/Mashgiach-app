@@ -225,13 +225,21 @@ The "לוגי ביקורים" tab (id: `reports`) shows `visit_logs` scan histor
 
 Standalone documents/contracts library, separate from the per-inspector `profiles.contract_url`. Table `documents` (name, file_path, file_name, file_type, optional `location_id`/`inspector_id`, uploaded_by). Admin-gated `/api/admin/documents` (GET list with signed URLs, POST multipart upload, DELETE) reuses the `location-report-attachments` security model (20MB cap, MIME allowlist, `sharp` re-encode for images, extension-from-map, DB-row-first delete, storage rollback on DB-insert failure). `DocumentsTab.tsx` lists files with their location/inspector link. RLS is enabled with no policies (service-role route only; INFO-level advisor is intended).
 
-## Cities cleanup
+## Cities: closed list
 
-City is free text on `locations` (no cities table). `/api/admin/cities` lets an admin tidy that set: `PATCH { from, to }` renames a city across all its locations; `DELETE ?city=` detaches it (sets `city=null`), never deleting the locations. `CitiesManager.tsx` (a button on the Dashboard tab) lists distinct cities with counts; on change it re-runs `loadShared()`. `LocationsTab` groups the list by city (with a city search box); the Dashboard log table is collapsed by default.
+Table `cities` (`name_he` unique, `name_en`, `active`). A location points to a city with `locations.city_id`; `locations.city` is DERIVED (Hebrew name) by the trigger `locations_sync_city`, and renaming a city re-syncs its locations (`cities_propagate_name`). Never write `locations.city` directly: write `city_id`. Readers may keep using `locations.city`. Admin manages the list in `CitiesManager.tsx` ("ניהול ערים" on the Dashboard) through `/api/admin/cities` (GET with counts, POST, PATCH, DELETE `?id=&merge_into=` which moves the locations first). The location form city is a required dropdown.
+
+## Kashrut type and menu
+
+`locations.kashrut_type` is `meat` / `dairy` / `fish` (one choice; labels `KASHRUT_TYPE_LABELS` in `lib/utils/format.ts`, badge classes `kashrutBadge--*`). The menu is `locations.menu_text` plus `location_menu_files` in the private bucket `menu-files` (10 MB, max 20 files, images re-encoded to JPEG, PDFs checked by magic bytes; logic in `lib/utils/menuFiles.ts`). UI is the shared `components/MenuSection.tsx`: the "תפריט" tab in `LocationDetailModal` (admin, `/api/admin/menu-files`) and a card on the inspector location page (`/api/inspector/menu-files`, assignment-checked; text via `PATCH /api/inspector/procedure`). `MenuSection` reads `initialText` once, so the admin modal keys it on `location.updated_at`.
+
+## Modals
+
+`components/ui/Modal.tsx` renders through a portal into `<body>`, because every `.card` is its own stacking context (`isolation: isolate`). Do not nest a `<Modal>` inside a `<form>` that it should submit.
 
 ## Location create/edit: field scope
 
-`LocationForm` (in `LocationsTab.tsx`) handles: name, city, address, QR code, GPS coords, status, contact fields, kashrus_procedure. Fields requiring a record ID stay in `LocationDetailModal` only: `kashrus_certificate_url` (file upload), inspector assignment.
+`LocationForm` (in `LocationsTab.tsx`) handles: name, city (dropdown, `city_id`), kashrut type, address, QR code, GPS coords, status, contact fields, kashrus_procedure. Fields requiring a record ID stay in `LocationDetailModal` only: `kashrus_certificate_url` (file upload), inspector assignment.
 
 ## Storage buckets
 
@@ -241,6 +249,7 @@ City is free text on `locations` (no cities table). `/api/admin/cities` lets an 
 - `admin-reports` — private; signed URLs per attachment (1-hour expiry)
 - `documents` — private; standalone documents/contracts library (signed URLs, 1-hour expiry)
 - `procedure-photos` (private): oven/appliance photos for the work & kashrut procedure (signed URLs)
+- `menu-files` (private): restaurant menu photos and PDFs (signed URLs, 1 hour)
 
 ## Inspector photo uploads (camera + gallery)
 
