@@ -12,12 +12,43 @@ type ScanResult = {
   location_id?: string
   visit_log_id?: string
   has_checklist?: boolean
+  distance?: number | null
+  gps_warning?: string | null
+}
+
+const GPS_CODES = new Set(['no_gps', 'low_accuracy', 'too_far', 'location_no_coords'])
+
+function gpsErrorMessage(code: string, distance?: number | null, gpsError?: string | null): string {
+  switch (code) {
+    case 'no_gps':
+      return gpsError === 'denied'
+        ? 'הסריקה לא נרשמה: אין הרשאת מיקום. יש לאפשר גישה למיקום לאתר בהגדרות הטלפון (הגדרות > פרטיות > שירותי מיקום) ולנסות שוב.'
+        : 'הסריקה לא נרשמה: לא התקבל מיקום מהטלפון. ודא ששירותי המיקום פועלים ונסה שוב, רצוי ליד חלון או בכניסה.'
+    case 'low_accuracy':
+      return 'הסריקה לא נרשמה: המיקום שהתקבל לא מדויק מספיק. המתן כמה שניות ונסה שוב.'
+    case 'too_far':
+      return `הסריקה לא נרשמה: אתה נמצא ${distance != null ? `כ-${distance} מטר` : 'רחוק'} מהמסעדה. יש לסרוק במקום.`
+    case 'location_no_coords':
+      return 'הסריקה לא נרשמה: למסעדה זו עדיין לא הוגדר מיקום במערכת. פנה למנהל.'
+    default:
+      return 'קוד QR לא תקין. נסה שוב.'
+  }
+}
+
+function gpsWarningMessage(code: string, gpsError?: string | null): string {
+  if (code === 'no_gps') return gpsError === 'denied'
+    ? 'שים לב: אין הרשאת מיקום. בקרוב סריקה בלי מיקום לא תירשם. יש לאפשר מיקום בהגדרות.'
+    : 'שים לב: לא התקבל מיקום. בקרוב סריקה בלי מיקום לא תירשם.'
+  if (code === 'too_far') return 'שים לב: הסריקה בוצעה רחוק מהמסעדה וסומנה לבדיקה.'
+  if (code === 'low_accuracy') return 'שים לב: המיקום לא היה מדויק והסריקה סומנה לבדיקה.'
+  return 'שים לב: הסריקה סומנה לבדיקה.'
 }
 
 export default function ScanPage() {
   const router = useRouter()
   const { toast } = useToast()
   const [scanError, setScanError] = useState<string | null>(null)
+  const [canCorrect, setCanCorrect] = useState(false)
   const [processing, setProcessing] = useState(false)
   const [cameraError, setCameraError] = useState<string | null>(null)
   const scannerRef = useRef<{ stop: () => Promise<void> } | null>(null)
@@ -36,29 +67,50 @@ export default function ScanPage() {
     let lat: number | null = null
     let lng: number | null = null
     let accuracy: number | null = null
+    let gpsError: string | null = null
+    if (!('geolocation' in navigator)) {
+      gpsError = 'unsupported'
+    } else {
+      try {
+        const pos = await new Promise<GeolocationPosition>((res, rej) =>
+          navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 })
+        )
+        lat = pos.coords.latitude
+        lng = pos.coords.longitude
+        accuracy = pos.coords.accuracy
+      } catch (err) {
+        const code = (err as GeolocationPositionError | undefined)?.code
+        gpsError = code === 1 ? 'denied' : code === 3 ? 'timeout' : 'unavailable'
+      }
+    }
+
+    let data: ScanResult
     try {
-      const pos = await new Promise<GeolocationPosition>((res, rej) =>
-        navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 })
-      )
-      lat = pos.coords.latitude
-      lng = pos.coords.longitude
-      accuracy = pos.coords.accuracy
-    } catch {}
-
-    const res = await fetch('/api/inspector/scan', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ qr_code: qrCode.trim(), lat, lng, accuracy }),
-    })
-    const data: ScanResult = await res.json()
-
-    if (!data.success) {
-      setScanError(data.code === 'unauthorized'
-        ? 'אינך משויך למקום זה'
-        : 'קוד QR לא תקין. נסה שוב.')
+      const res = await fetch('/api/inspector/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ qr_code: qrCode.trim(), lat, lng, accuracy, gps_error: gpsError }),
+      })
+      data = await res.json()
+    } catch {
+      setScanError('אין חיבור לשרת. בדוק את החיבור לאינטרנט ונסה שוב.')
       setProcessing(false)
       return
     }
+
+    if (!data.success) {
+      const code = data.code ?? ''
+      setCanCorrect(GPS_CODES.has(code))
+      setScanError(
+        code === 'unauthorized' ? 'אינך משויך למקום זה'
+        : code === 'forbidden' ? 'רק משגיחים יכולים לרשום סריקה.'
+        : code === 'error' ? 'הסריקה לא נשמרה בגלל תקלה בשרת. נסה שוב.'
+        : gpsErrorMessage(code, data.distance, gpsError))
+      setProcessing(false)
+      return
+    }
+
+    if (data.gps_warning) toast(gpsWarningMessage(data.gps_warning, gpsError), 'error')
 
     if (data.action_type === 'exit' && data.has_checklist && data.visit_log_id && data.location_id) {
       router.push(`/inspector/checklist?visit_log_id=${data.visit_log_id}&location_id=${data.location_id}`)
@@ -125,6 +177,7 @@ export default function ScanPage() {
   function handleRetry() {
     hasScanned.current = false
     setScanError(null)
+    setCanCorrect(false)
     setProcessing(false)
     setCameraError(null)
     router.replace('/inspector/scan')
@@ -135,6 +188,12 @@ export default function ScanPage() {
       <div className="app" style={{ maxWidth: 480, margin: '0 auto', minHeight: '100svh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 32, textAlign: 'center' }}>
         <p style={{ color: 'var(--danger)', fontSize: '1rem', maxWidth: 280 }}>{scanError}</p>
         <button className="button button--primary" onClick={handleRetry}>נסה שוב</button>
+        {canCorrect && (
+          <button className="button button--ghost" onClick={() => {
+            try { localStorage.setItem('inspectorTab', 'scancorrect') } catch {}
+            router.push('/inspector')
+          }}>שלח בקשת תיקון סריקה למנהל</button>
+        )}
         <button className="button button--ghost" onClick={() => router.push('/inspector')}>
           <ArrowRight size={15} /> חזור לבית
         </button>

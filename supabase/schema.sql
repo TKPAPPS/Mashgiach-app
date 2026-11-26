@@ -89,7 +89,8 @@ CREATE TABLE visit_logs (
   device_accuracy_m double precision,
   manual_correction boolean NOT NULL DEFAULT false,   -- created by an approved scan correction
   distance_meters  int,
-  internal_status  text NOT NULL CHECK (internal_status IN ('success','unauthorized','invalid_location','gps_mismatch','error')),
+  internal_status  text NOT NULL CHECK (internal_status IN ('success','unauthorized','invalid_location','gps_mismatch','gps_rejected','error')),
+  gps_check        text CHECK (gps_check IN ('ok','no_gps','low_accuracy','too_far','location_no_coords')),  -- result of the scan GPS check
   qr_code_scanned  text,
   created_at       timestamptz DEFAULT now()
 );
@@ -192,6 +193,7 @@ CREATE TABLE gps_alerts (
   location_id      uuid REFERENCES locations(id),
   action_type      text,
   distance_meters  int,
+  alert_type       text NOT NULL DEFAULT 'gps_mismatch' CHECK (alert_type IN ('gps_mismatch','no_gps','low_accuracy','location_no_coords','impossible_travel')),
   read             boolean DEFAULT false,
   created_at       timestamptz DEFAULT now()
 );
@@ -291,6 +293,7 @@ CREATE TABLE report_settings (
   monthly_enabled         boolean NOT NULL DEFAULT false,
   monthly_sections        text[]  NOT NULL DEFAULT '{time_per_restaurant,deficiencies,checklist_details}',
   monthly_last_sent_month text,                           -- 'YYYY-MM' Bangkok of last monthly send; idempotency guard
+  gps_enforcement text NOT NULL DEFAULT 'warn' CHECK (gps_enforcement IN ('off','warn','block')),  -- scan GPS policy, own admin route
   updated_at     timestamptz NOT NULL DEFAULT now()
 );
 
@@ -341,7 +344,8 @@ CREATE POLICY "il_self_select"        ON inspector_locations FOR SELECT TO authe
 
 -- Visit logs
 CREATE POLICY "vl_admin_all"          ON visit_logs FOR ALL TO authenticated USING (is_admin());
-CREATE POLICY "vl_self_insert"        ON visit_logs FOR INSERT TO authenticated WITH CHECK (inspector_id = auth.uid());
+-- vl_self_insert dropped 2026-11-26: visit rows are written only by /api/inspector/scan (service role),
+-- so an inspector cannot insert a scan with a forged created_at from the browser.
 CREATE POLICY "vl_self_select"        ON visit_logs FOR SELECT TO authenticated USING (inspector_id = auth.uid());
 
 -- Checklist items: admin manages, mashgiach reads active

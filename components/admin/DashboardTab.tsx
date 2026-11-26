@@ -86,7 +86,7 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
     ] = await Promise.all([
       logsQuery,
       supabase.from('gps_alerts')
-        .select('id,created_at,action_type,distance_meters,read,inspector:profiles(id,full_name),location:locations(id,name,city),visit_log:visit_logs(device_lat,device_lng)')
+        .select('id,created_at,action_type,distance_meters,alert_type,read,inspector:profiles(id,full_name),location:locations(id,name,city),visit_log:visit_logs(device_lat,device_lng)')
         .eq('read', false).order('created_at', { ascending: false }).limit(10),
       checksQuery,
       supabase.from('visit_logs').select('id', { count: 'estimated', head: true }),
@@ -177,7 +177,7 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
                 <AlertTriangle size={16} /> {alerts.length} חריגות GPS לא מטופלות
               </div>
               <p style={{ fontSize: '.78rem', color: 'var(--muted)', margin: 0 }}>
-                המשגיח סרק QR ממרחק העולה על 100 מטר מהמקום. יתכן שינוי מיקום חשוד. סמן כנקרא לאחר בדיקה.
+                סריקה ממרחק העולה על 100 מטר מהמקום, או סריקה שנחסמה בגלל מיקום חסר. סמן כנקרא לאחר בדיקה.
               </p>
             </div>
             <button
@@ -203,7 +203,10 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
                     <td>{actionLabel(a.action_type ?? '')}</td>
                     <td>
                       <span style={{ fontWeight: 600, color: 'var(--warning)' }}>
-                        {a.distance_meters ? `${a.distance_meters} מ׳` : '-'}
+                        {a.alert_type === 'no_gps' ? 'ללא מיקום (נחסם)'
+                          : a.alert_type === 'low_accuracy' ? `מיקום לא מדויק (נחסם)${a.distance_meters != null ? `, ${a.distance_meters} מ׳` : ''}`
+                          : a.alert_type === 'location_no_coords' ? 'למסעדה אין מיקום (נחסם)'
+                          : a.distance_meters ? `${a.distance_meters} מ׳` : '-'}
                       </span>
                     </td>
                     <td>

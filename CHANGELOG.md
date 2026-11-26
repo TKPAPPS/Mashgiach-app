@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-11-26: Scan integrity: GPS enforcement, entry/exit fix, inspector-only scans
+
+From the manager's fix list (points 1, 3, 12 and the root cause of 2).
+
+- **GPS enforcement with an admin switch** (`report_settings.gps_enforcement`: `off` / `warn` / `block`,
+  default `warn`, card "אימות מיקום בסריקה" in the Admins tab, route `/api/admin/gps-settings`).
+  Each scan gets a `visit_logs.gps_check` (`ok`, `no_gps`, `low_accuracy`, `too_far`, `location_no_coords`)
+  from `evaluateGps()` in `lib/utils/gps.ts`. Rules: raw distance over 100 m plus at most 50 m of
+  accuracy allowance is too far; accuracy worse than 300 m is not trusted. The old code subtracted the
+  full accuracy radius, so a coarse fix always passed.
+  - `warn`: the scan counts, the row is flagged, the inspector gets a warning toast.
+  - `block`: the scan is saved as `internal_status = 'gps_rejected'` (audit only, never a visit), a
+    `gps_alerts` row is created with `alert_type`, and the scan page shows the reason plus a button to
+    the scan-correction form.
+  - Why a switch: in the 30 days before this change three inspectors never sent GPS on any scan, so
+    blocking on day one would have locked them out. The manager flips to `block` once they enable location.
+- **Entry/exit toggle fixed** (cause of the 21:39 hour "visits" and reversed labels): the toggle now uses
+  only counted rows (`success`, `gps_mismatch`), an entry older than 12 h (`MAX_VISIT_HOURS`) is left
+  unclosed and the scan opens a new visit, and a rescan within 2 minutes (`SCAN_DEBOUNCE_MS`) returns
+  the existing visit instead of writing a 0:00 pair. Inspector home and location page apply the same rules.
+- **Server time only**: dropped RLS policy `vl_self_insert` on `visit_logs`; only the service-role scan
+  route writes visits, with the DB `now()`.
+- **Role check**: `/api/inspector/scan` returns 403 `forbidden` unless `profiles.role = 'mashgiach'`.
+- `computeTimeSpent` skips non-visit rows. Dashboard alerts show the alert type.
+- Migration `scan_integrity_gps_enforcement` (additive: `visit_logs.gps_check`, wider `internal_status`
+  CHECK, `gps_alerts.alert_type`, `report_settings.gps_enforcement`, drop `vl_self_insert`).
+
 ## 2026-07-21: Fix admin Absences tab always showing 0 requests
 
 The manager's היעדרויות tab showed "0 / אין בקשות" while pending `absence_requests` existed

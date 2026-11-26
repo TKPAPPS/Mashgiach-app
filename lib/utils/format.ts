@@ -30,6 +30,7 @@ export function statusLabel(status: string): { label: string; cls: string } {
     unauthorized:     { label: 'לא מורשה',             cls: 'badge--warning' },
     invalid_location: { label: 'מקום לא תקין',         cls: 'badge--danger'  },
     gps_mismatch:     { label: 'חריגת GPS',             cls: 'badge--warning' },
+    gps_rejected:     { label: 'נדחה: GPS',             cls: 'badge--danger'  },
     error:            { label: 'שגיאה',                cls: 'badge--danger'  },
   }
   return map[status] ?? { label: status, cls: 'badge--muted' }

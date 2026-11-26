@@ -8,6 +8,8 @@ export function computeTimeSpent(logs: VisitLog[]): Record<string, string> {
   const lastEntry: Record<string, VisitLog> = {}
   const result: Record<string, string> = {}
   for (const log of sorted) {
+    // Blocked, unauthorized and invalid scans are audit rows, not visits.
+    if (log.internal_status && log.internal_status !== 'success' && log.internal_status !== 'gps_mismatch') continue
     const key = `${log.inspector_id}|${log.location_id ?? ''}`
     if (log.action_type === 'entry') {
       lastEntry[key] = log

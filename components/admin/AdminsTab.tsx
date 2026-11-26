@@ -6,6 +6,7 @@ import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import type { Profile } from '@/lib/supabase/types'
 import ReportSettings from './ReportSettings'
+import GpsEnforcementSettings from './GpsEnforcementSettings'
 
 type Props = {
   refreshKey: number
@@ -209,6 +210,7 @@ export default function AdminsTab({ refreshKey, emailMap, currentUserId }: Props
       </Modal>
     </div>
 
+    <GpsEnforcementSettings />
     <ReportSettings />
     </>
   )
