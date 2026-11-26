@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, ReportSection, VisitLog, VisitCheck, DeficiencyReport } from '@/lib/supabase/types'
+import { pairVisits, PAIRING_MARGIN_MS } from '@/lib/utils/visits'
 
 type Service = SupabaseClient<Database>
 
@@ -29,6 +30,29 @@ export function bangkokDayOfMonth(now: Date = new Date()): number {
 // Bangkok month key 'YYYY-MM' for `now` (idempotency guard for the monthly send).
 export function bangkokMonthKey(now: Date = new Date()): string {
   return bangkokDateStr(now).slice(0, 7)
+}
+
+function shiftIso(iso: string, ms: number): string {
+  return new Date(new Date(iso).getTime() + ms).toISOString()
+}
+
+// Visit time per inspector + restaurant, via the shared pairVisits(). A visit
+// belongs to the day (or month) of its ENTRY, so one that ends after midnight
+// counts in full on the day it started. Only visits whose two scans were both
+// clean ('success') count toward time; GPS-flagged visits are left out, as before.
+function addVisitMinutes(
+  allLogs: VisitLog[],
+  startIso: string,
+  endIso: string,
+  ensureLoc: (inspId: string, inspName: string, locId: string, locName: string) => LocAgg,
+) {
+  for (const p of pairVisits(allLogs)) {
+    if (p.state !== 'closed' || !p.entry || !p.exit || !p.entry.location_id || p.flagged) continue
+    if (p.entry.internal_status !== 'success' || p.exit.internal_status !== 'success') continue
+    if (p.entry.created_at < startIso || p.entry.created_at >= endIso) continue
+    const e = p.entry
+    ensureLoc(e.inspector_id, e.inspector?.full_name ?? 'לא ידוע', e.location_id!, e.location?.name ?? 'לא ידוע').minutes += p.minutes ?? 0
+  }
 }
 
 function bangkokDayWindow(dateStr: string): { startIso: string; endIso: string } {
@@ -104,7 +128,7 @@ export async function buildDailyReport(
   const [{ data: logsData }, { data: checksData }, { data: defsData }] = await Promise.all([
     service.from('visit_logs')
       .select('id,action_type,location_id,inspector_id,created_at,internal_status,inspector:profiles(id,full_name),location:locations(id,name,city)')
-      .gte('created_at', startIso).lt('created_at', endIso)
+      .gte('created_at', shiftIso(startIso, -PAIRING_MARGIN_MS)).lt('created_at', shiftIso(endIso, PAIRING_MARGIN_MS))
       .order('created_at', { ascending: true }),
     service.from('visit_checks')
       .select('id,visit_log_id,item_name,note,created_at,inspector:profiles(id,full_name),location:locations(id,name)')
@@ -116,7 +140,10 @@ export async function buildDailyReport(
       .order('created_at', { ascending: true }),
   ])
 
-  const logs = (logsData ?? []) as VisitLog[]
+  // Fetched with a margin either side so visits crossing midnight pair up;
+  // `logs` is only the rows inside the window.
+  const allLogs = (logsData ?? []) as VisitLog[]
+  const logs = allLogs.filter(l => l.created_at >= startIso && l.created_at < endIso)
   const checks = (checksData ?? []) as VisitCheck[]
   const defs = (defsData ?? []) as DeficiencyReport[]
 
@@ -137,21 +164,7 @@ export async function buildDailyReport(
     else if (l.action_type === 'exit') loc.exits++
   }
 
-  // Total time per inspector+restaurant: pair each entry with the next exit.
-  const openEntry: Record<string, VisitLog> = {}
-  for (const l of logs) {
-    if (l.internal_status !== 'success' || !l.location_id) continue
-    const key = `${l.inspector_id}|${l.location_id}`
-    if (l.action_type === 'entry') {
-      openEntry[key] = l
-    } else if (l.action_type === 'exit' && openEntry[key]) {
-      const mins = Math.round((new Date(l.created_at).getTime() - new Date(openEntry[key].created_at).getTime()) / 60000)
-      if (mins >= 0 && mins < 1440) {
-        ensureLoc(l.inspector_id, l.inspector?.full_name ?? 'לא ידוע', l.location_id, l.location?.name ?? 'לא ידוע').minutes += mins
-      }
-      delete openEntry[key]
-    }
-  }
+  addVisitMinutes(allLogs, startIso, endIso, ensureLoc)
 
   // Checklist items grouped per visit (per exit scan).
   const visitChecks = new Map<string, VisitChecksAgg>()
@@ -296,7 +309,7 @@ export async function buildMonthlyReport(
   const [{ data: logsData }, { data: checksData }, { data: defsData }] = await Promise.all([
     service.from('visit_logs')
       .select('id,action_type,location_id,inspector_id,created_at,internal_status,inspector:profiles(id,full_name),location:locations(id,name,city)')
-      .gte('created_at', startIso).lt('created_at', endIso)
+      .gte('created_at', shiftIso(startIso, -PAIRING_MARGIN_MS)).lt('created_at', shiftIso(endIso, PAIRING_MARGIN_MS))
       .order('created_at', { ascending: true }),
     wantChecks
       ? service.from('visit_checks')
@@ -312,7 +325,10 @@ export async function buildMonthlyReport(
       : Promise.resolve({ data: [] as DeficiencyReport[] }),
   ])
 
-  const logs = (logsData ?? []) as VisitLog[]
+  // Fetched with a margin either side so visits crossing midnight pair up;
+  // `logs` is only the rows inside the window.
+  const allLogs = (logsData ?? []) as VisitLog[]
+  const logs = allLogs.filter(l => l.created_at >= startIso && l.created_at < endIso)
   const checks = (checksData ?? []) as VisitCheck[]
   const defs = (defsData ?? []) as DeficiencyReport[]
 
@@ -334,22 +350,7 @@ export async function buildMonthlyReport(
     else if (l.action_type === 'exit') loc.exits++
   }
 
-  // Total time per inspector+restaurant: pair each entry with the next exit.
-  // The < 1440 guard caps a single pairing at under a day, not the monthly sum.
-  const openEntry: Record<string, VisitLog> = {}
-  for (const l of logs) {
-    if (l.internal_status !== 'success' || !l.location_id) continue
-    const key = `${l.inspector_id}|${l.location_id}`
-    if (l.action_type === 'entry') {
-      openEntry[key] = l
-    } else if (l.action_type === 'exit' && openEntry[key]) {
-      const mins = Math.round((new Date(l.created_at).getTime() - new Date(openEntry[key].created_at).getTime()) / 60000)
-      if (mins >= 0 && mins < 1440) {
-        ensureLoc(l.inspector_id, l.inspector?.full_name ?? 'לא ידוע', l.location_id, l.location?.name ?? 'לא ידוע').minutes += mins
-      }
-      delete openEntry[key]
-    }
-  }
+  addVisitMinutes(allLogs, startIso, endIso, ensureLoc)
 
   // Checklist completion summary: per restaurant, how many visits had checks and
   // how many items were checked in total across the month.

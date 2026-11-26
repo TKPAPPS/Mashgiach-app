@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-11-26: Visit time you can trust, real GPS alert count
+
+From the manager's fix list (points 2 and 8).
+
+- **One pairing rule everywhere**: `pairVisits()` in `lib/utils/visits.ts` now feeds the dashboard,
+  the visit log tab and both email reports (each used to have its own loop). Only counted rows
+  (`success`, `gps_mismatch`) pair; an exit closes an entry only within `MAX_VISIT_HOURS` (12 h),
+  the same rule the scan route uses. States: closed, open, no_exit, orphan_exit.
+- **Visits that cross midnight**: the email builders fetch 12 h either side of the day (or month)
+  and a visit counts in full on the day of its ENTRY. Before, a visit ending after midnight was
+  lost on both days. Time still counts only when both scans were clean `success`.
+- **"זמן שהייה" column** (`VisitTimeCell.tsx`): duration on the exit row, "בפנים מאז HH:MM" for an
+  open visit, "לא נסגר" for an entry that was never closed, "ללא כניסה" for an exit without an entry.
+  No more 21-hour "visits".
+- **Bangkok dates**: the visit log filters by Bangkok calendar day (was UTC string compare, off by
+  7 h); the dashboard range uses `bangkokRange()`; both fetch a pairing margin and hide it.
+- **GPS alerts**: the banner shows the real unread count (was capped at 10), the list pages 20 then
+  +100 per "טען עוד", and "סמן הכל כנקרא" asks for confirmation and marks ALL unread alerts through
+  the new admin route `PATCH /api/admin/gps-alerts` (it used to mark only the 10 on screen).
+- Existing data is unchanged; the new rules display it correctly. At this date: 1,253 under-1-minute
+  pairs (about 24 under 5 s, the rest deliberate scan in and out), 377 pairs over 12 h (forgotten
+  exits, mostly two inspectors), 735 unread alerts.
+
 ## 2026-11-26: Scan integrity: GPS enforcement, entry/exit fix, inspector-only scans
 
 From the manager's fix list (points 1, 3, 12 and the root cause of 2).
