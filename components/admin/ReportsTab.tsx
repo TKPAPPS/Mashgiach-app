@@ -6,12 +6,11 @@ import { formatDateTime, actionLabel, statusLabel } from '@/lib/utils/format'
 import { exportToExcel } from '@/lib/utils/excel'
 import type { VisitLog } from '@/lib/supabase/types'
 import type { SharedInspector, SharedLocation } from './AdminShell'
-import { computeTimeSpent } from '@/lib/utils/visits'
+import { visitCells, bangkokDateOf, bangkokRange, PAIRING_MARGIN_MS, type VisitCell } from '@/lib/utils/visits'
+import VisitTimeCell from './VisitTimeCell'
 
 function thirtyDaysAgo() {
-  const d = new Date()
-  d.setDate(d.getDate() - 30)
-  return d.toISOString().slice(0, 10)
+  return bangkokDateOf(new Date(Date.now() - 30 * 24 * 3600_000).toISOString())
 }
 
 const DEFAULT_FROM = thirtyDaysAgo()
@@ -91,7 +90,7 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
   const [filters, setFilters] = useState({ from: DEFAULT_FROM, to: '', inspector: '', location: '', action: '', search: '' })
   const [photoCounts, setPhotoCounts] = useState<Record<string, number>>({})
   const [photoModalId, setPhotoModalId] = useState<string | null>(null)
-  const [timeSpent, setTimeSpent] = useState<Record<string, string>>({})
+  const [timeSpent, setTimeSpent] = useState<Record<string, VisitCell>>({})
 
   useEffect(() => { loadAll(filters.from) }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -107,11 +106,14 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
       .select('*, inspector:profiles(id,full_name), location:locations(id,name,city)')
       .order('created_at', { ascending: false })
       .limit(500)
-    if (fromDate) q.gte('created_at', fromDate)
+    // Bangkok day bounds, fetched with a margin so a visit that started before
+    // the range (or crosses midnight) still pairs; the margin rows are hidden below.
+    const { fromIso } = bangkokRange(fromDate)
+    if (fromIso) q.gte('created_at', new Date(new Date(fromIso).getTime() - PAIRING_MARGIN_MS).toISOString())
     const { data: logsData } = await q
     const list = (logsData ?? []) as VisitLog[]
     setLogs(list)
-    setTimeSpent(computeTimeSpent(list))
+    setTimeSpent(visitCells(list))
     setLoading(false)
 
     // Batch-fetch photo counts (single query)
@@ -131,8 +133,9 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
     if (filters.inspector && l.inspector_id !== filters.inspector) return false
     if (filters.location && l.location_id !== filters.location) return false
     if (filters.action && l.action_type !== filters.action) return false
-    if (filters.from && l.created_at < filters.from) return false
-    if (filters.to && l.created_at > filters.to + 'T23:59:59') return false
+    const day = bangkokDateOf(l.created_at)
+    if (filters.from && day < filters.from) return false
+    if (filters.to && day > filters.to) return false
     if (q) {
       const haystack = [
         (l.inspector as { full_name?: string } | undefined)?.full_name ?? '',
@@ -155,7 +158,7 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
       'מקום': (l.location as { name: string } | undefined)?.name ?? '-',
       'עיר': (l.location as { city: string | null } | undefined)?.city ?? '-',
       'סטטוס': statusLabel(l.internal_status).label,
-      'זמן שהייה': timeSpent[l.id] ?? '',
+      'זמן שהייה': timeSpent[l.id]?.text ?? '',
       'קו רוחב': l.device_lat ?? '',
       'קו אורך': l.device_lng ?? '',
       'מרחק (מ׳)': l.distance_meters ?? '',
@@ -246,7 +249,7 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
                       <td>{loc?.name ?? <span className="mutedCell">-</span>}</td>
                       <td>{loc?.city ?? <span className="mutedCell">-</span>}</td>
                       <td><span className={`badge ${cls}`}>{label}</span></td>
-                      <td>{timeSpent[log.id] ? <span style={{ fontSize: '.85rem', color: 'var(--primary)', fontWeight: 500 }}>{timeSpent[log.id]}</span> : <span className="mutedCell">-</span>}</td>
+                      <td className="noWrap"><VisitTimeCell cell={timeSpent[log.id]} /></td>
                       <td>{log.distance_meters != null ? `${log.distance_meters} מ׳` : <span className="mutedCell">-</span>}</td>
                       <td>
                         {log.device_lat && log.device_lng

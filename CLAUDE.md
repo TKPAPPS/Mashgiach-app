@@ -68,7 +68,8 @@ lib/
     types.ts              → all DB types + Database type for Supabase generics
   utils/
     format.ts             → formatDateTime, formatDate, formatRelative, statusLabel, actionLabel, etc.
-    gps.ts                → distanceMeters(), GPS_THRESHOLD_METERS (100m)
+    gps.ts                → distanceMeters(), evaluateGps(), GPS constants, MAX_VISIT_HOURS
+    visits.ts             → pairVisits() / visitCells(): the ONLY visit pairing rule (UI + emails), Bangkok date helpers
     notifyAdmins.ts       → push notification utility (call directly, never via HTTP)
     excel.ts              → exportToExcel()
 ```
@@ -291,9 +292,13 @@ Inactive locations render at 55% opacity with `cursor: default` and no click han
 
 Inspector home location cards show "בפנים" (entry) or "בחוץ" (exit / no history) derived from the `visitMap` built in `loadAll()`. No additional fetch needed.
 
+## Visit time (pairing)
+
+All visit time comes from `pairVisits()` in `lib/utils/visits.ts`; never write another entry/exit loop. Counted rows only (`success`, `gps_mismatch`); an exit closes an entry only within `MAX_VISIT_HOURS`; states closed / open / no_exit / orphan_exit. A visit belongs to the Bangkok day of its ENTRY. Any query feeding it for a date window must fetch `PAIRING_MARGIN_MS` either side and then hide the margin rows (see `dailyReport.ts`, `ReportsTab`, `DashboardTab`). The "זמן שהייה" cell is `VisitTimeCell` fed by `visitCells()`. Emails count time only for visits whose both scans are `success`.
+
 ## GPS alert lifecycle
 
-Dashboard alerts appear when an inspector scans from >100m, or (block mode) when a scan is rejected for GPS; `gps_alerts.alert_type` says which. Individual dismiss ("סמן כנקרא") or bulk dismiss. `gps_alerts` joins `visit_logs` to expose `device_lat`/`device_lng` for a Google Maps link in the alerts table. Only `read` flag changes; rows are permanent.
+Dashboard alerts appear when an inspector scans from >100m, or (block mode) when a scan is rejected for GPS; `gps_alerts.alert_type` says which. The banner shows the real unread count (head count query) and pages the list (20, then +100). Individual dismiss ("סמן כנקרא") or bulk dismiss, which asks for confirmation and marks every unread alert via `PATCH /api/admin/gps-alerts`. `gps_alerts` joins `visit_logs` to expose `device_lat`/`device_lng` for a Google Maps link in the alerts table. Only `read` flag changes; rows are permanent.
 
 ## Replacement inspector selection
 

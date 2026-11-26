@@ -2,13 +2,15 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
-  CircleCheck, Users, CalendarDays, AlertTriangle, ListChecks, ChevronDown, ChevronUp, Clock
+  CircleCheck, Users, CalendarDays, AlertTriangle, ListChecks, ChevronDown, ChevronUp
 } from 'lucide-react'
 import { formatDateTime, statusLabel, actionLabel } from '@/lib/utils/format'
-import { computeTimeSpent } from '@/lib/utils/visits'
+import { visitCells, PAIRING_MARGIN_MS, bangkokDateOf, bangkokRange } from '@/lib/utils/visits'
+import VisitTimeCell from './VisitTimeCell'
 import type { VisitLog, GpsAlert, VisitCheck } from '@/lib/supabase/types'
 import type { SharedInspector, SharedLocation } from './AdminShell'
 import CitiesManager from './CitiesManager'
+import Modal from '@/components/ui/Modal'
 
 type Props = {
   refreshKey: number
@@ -17,10 +19,18 @@ type Props = {
   onCitiesChanged: () => void
 }
 
+const ALERT_PAGE = 20
+
 export default function DashboardTab({ refreshKey, inspectors, locations, onCitiesChanged }: Props) {
   const supabase = useMemo(() => createClient(), [])
   const [logs, setLogs] = useState<VisitLog[]>([])
   const [alerts, setAlerts] = useState<GpsAlert[]>([])
+  const [alertsTotal, setAlertsTotal] = useState(0)
+  const [alertLimit, setAlertLimit] = useState(ALERT_PAGE)
+  const [confirmReadAll, setConfirmReadAll] = useState(false)
+  const [markingAll, setMarkingAll] = useState(false)
+  const alertLimitRef = useRef(ALERT_PAGE)
+  alertLimitRef.current = alertLimit
   const [completions, setCompletions] = useState<VisitCheck[]>([])
   const [stats, setStats] = useState({ total: 0, inspectors: 0, thisMonth: 0 })
   const [filters, setFilters] = useState({ from: '', to: '', inspector: '', location: '', city: '', action: '' })
@@ -52,14 +62,15 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
 
   async function loadAll() {
     setLoading(true)
-    const now = new Date()
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+    const monthStart = bangkokRange(`${bangkokDateOf(new Date().toISOString()).slice(0, 8)}01`).fromIso!
     const f = filtersRef.current
     const hasRange = !!(f.from || f.to)
     // Date inputs are Bangkok calendar days; pin the bounds to +07:00 so the
     // window matches the emailed daily report (which also uses Asia/Bangkok).
-    const fromBound = f.from ? `${f.from}T00:00:00+07:00` : null
-    const toBound = f.to ? `${f.to}T23:59:59+07:00` : null
+    // Logs are fetched with a pairing margin either side so a visit crossing the
+    // range edge still pairs; rows outside the range are hidden in `filtered`.
+    const { fromIso: fromBound, toIso: toBound } = bangkokRange(f.from, f.to)
+    const shift = (iso: string, ms: number) => new Date(new Date(iso).getTime() + ms).toISOString()
 
     let logsQuery = supabase.from('visit_logs')
       .select('id,action_type,location_id,inspector_id,internal_status,device_lat,device_lng,distance_meters,created_at,inspector:profiles(id,full_name),location:locations(id,name,city)')
@@ -69,8 +80,8 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
       .order('created_at', { ascending: false })
 
     if (hasRange) {
-      if (fromBound) { logsQuery = logsQuery.gte('created_at', fromBound); checksQuery = checksQuery.gte('created_at', fromBound) }
-      if (toBound) { logsQuery = logsQuery.lte('created_at', toBound); checksQuery = checksQuery.lte('created_at', toBound) }
+      if (fromBound) { logsQuery = logsQuery.gte('created_at', shift(fromBound, -PAIRING_MARGIN_MS)); checksQuery = checksQuery.gte('created_at', fromBound) }
+      if (toBound) { logsQuery = logsQuery.lt('created_at', shift(toBound, PAIRING_MARGIN_MS)); checksQuery = checksQuery.lt('created_at', toBound) }
       logsQuery = logsQuery.limit(1000); checksQuery = checksQuery.limit(1000)
     } else {
       logsQuery = logsQuery.limit(50); checksQuery = checksQuery.limit(40)
@@ -79,6 +90,7 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
     const [
       { data: logsData },
       { data: alertsData },
+      { count: unreadAlerts },
       { data: checksData },
       { count: total },
       { count: thisMonth },
@@ -87,7 +99,8 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
       logsQuery,
       supabase.from('gps_alerts')
         .select('id,created_at,action_type,distance_meters,alert_type,read,inspector:profiles(id,full_name),location:locations(id,name,city),visit_log:visit_logs(device_lat,device_lng)')
-        .eq('read', false).order('created_at', { ascending: false }).limit(10),
+        .eq('read', false).order('created_at', { ascending: false }).limit(alertLimitRef.current),
+      supabase.from('gps_alerts').select('id', { count: 'exact', head: true }).eq('read', false),
       checksQuery,
       supabase.from('visit_logs').select('id', { count: 'estimated', head: true }),
       supabase.from('visit_logs').select('id', { count: 'estimated', head: true }).gte('created_at', monthStart),
@@ -96,6 +109,7 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
 
     setLogs((logsData ?? []) as VisitLog[])
     setAlerts((alertsData ?? []) as GpsAlert[])
+    setAlertsTotal(unreadAlerts ?? 0)
     setCompletions((checksData ?? []) as VisitCheck[])
     setStats({
       total: total ?? 0,
@@ -121,6 +135,9 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
   // Date range is applied server-side (in Bangkok time) by loadAll; the
   // remaining filters are client-side over the fetched rows.
   const filtered = logs.filter(l => {
+    const day = bangkokDateOf(l.created_at)
+    if (filters.from && day < filters.from) return false
+    if (filters.to && day > filters.to) return false
     if (filters.inspector && l.inspector_id !== filters.inspector) return false
     if (filters.location && l.location_id !== filters.location) return false
     if (filters.action && l.action_type !== filters.action) return false
@@ -130,9 +147,9 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
 
   const cities = [...new Set(locations.map(l => l.city).filter(Boolean))]
 
-  // Time spent at location ("H:MM") keyed by the exit log id, computed over all
-  // loaded logs so entry/exit pairs are not split by the table filters.
-  const timeSpent = useMemo(() => computeTimeSpent(logs), [logs])
+  // Visit time column keyed by log id, computed over all loaded logs (including
+  // the pairing margin) so entry/exit pairs are not split by the table filters.
+  const timeSpent = useMemo(() => visitCells(logs), [logs])
 
   // Group the most recent completed checks by visit so the dashboard shows what
   // each inspector actually marked done. Cap at the latest 15 visits.
@@ -169,12 +186,12 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* GPS Alerts banner */}
-      {alerts.length > 0 && (
+      {alertsTotal > 0 && (
         <div className="card" style={{ borderColor: 'var(--warning)', background: 'var(--warning-light)' }}>
           <div className="card__header--inline">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <div className="card__title" style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--warning)' }}>
-                <AlertTriangle size={16} /> {alerts.length} חריגות GPS לא מטופלות
+                <AlertTriangle size={16} /> {alertsTotal} חריגות GPS לא מטופלות
               </div>
               <p style={{ fontSize: '.78rem', color: 'var(--muted)', margin: 0 }}>
                 סריקה ממרחק העולה על 100 מטר מהמקום, או סריקה שנחסמה בגלל מיקום חסר. סמן כנקרא לאחר בדיקה.
@@ -183,11 +200,7 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
             <button
               className="button button--ghost button--sm"
               style={{ flexShrink: 0 }}
-              onClick={async () => {
-                const ids = alerts.map(a => a.id)
-                await supabase.from('gps_alerts').update({ read: true }).in('id', ids)
-                setAlerts([])
-              }}>
+              onClick={() => setConfirmReadAll(true)}>
               סמן הכל כנקרא
             </button>
           </div>
@@ -221,6 +234,7 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
                       <button className="button button--ghost button--sm" onClick={async () => {
                         await supabase.from('gps_alerts').update({ read: true }).eq('id', a.id)
                         setAlerts(prev => prev.filter(x => x.id !== a.id))
+                        setAlertsTotal(t => Math.max(0, t - 1))
                       }}>סמן כנקרא</button>
                     </td>
                   </tr>
@@ -228,8 +242,34 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
               </tbody>
             </table>
           </div>
+          {alerts.length < alertsTotal && (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 12, padding: '10px 14px 14px' }}>
+              <span style={{ fontSize: '.8rem', color: 'var(--muted)' }}>מוצגות {alerts.length} מתוך {alertsTotal}</span>
+              <button className="button button--ghost button--sm" onClick={() => {
+                const next = alertLimit + ALERT_PAGE * 5
+                alertLimitRef.current = next
+                setAlertLimit(next)
+                loadAll()
+              }}>טען עוד</button>
+            </div>
+          )}
         </div>
       )}
+
+      <Modal open={confirmReadAll} onClose={() => setConfirmReadAll(false)} title="סימון כל ההתראות כנקראו"
+        footer={<>
+          <button className="button button--ghost" onClick={() => setConfirmReadAll(false)}>ביטול</button>
+          <button className="button button--primary" disabled={markingAll} onClick={async () => {
+            setMarkingAll(true)
+            const res = await fetch('/api/admin/gps-alerts', { method: 'PATCH' })
+            setMarkingAll(false)
+            setConfirmReadAll(false)
+            if (res.ok) { setAlerts([]); setAlertsTotal(0) }
+            loadAll()
+          }}>{markingAll ? <span className="spinner" /> : `סמן ${alertsTotal} כנקראו`}</button>
+        </>}>
+        <p>לסמן את כל {alertsTotal} חריגות ה-GPS שלא טופלו כנקראו, כולל אלו שלא מוצגות ברשימה? ההתראות נשמרות במערכת ולא נמחקות.</p>
+      </Modal>
 
       {/* Stats */}
       <div className="statsGrid">
@@ -384,9 +424,7 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
                         <td>{loc?.name ?? <span className="mutedCell">לא זוהה</span>}</td>
                         <td>{loc?.city ?? <span className="mutedCell">-</span>}</td>
                         <td>
-                          {isExit && timeSpent[log.id]
-                            ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Clock size={12} aria-hidden />{timeSpent[log.id]}</span>
-                            : <span className="mutedCell">-</span>}
+                          <VisitTimeCell cell={timeSpent[log.id]} />
                         </td>
                         <td><span className={`badge ${cls}`}>{label}</span></td>
                         <td>
