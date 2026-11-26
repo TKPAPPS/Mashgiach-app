@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { MapPin } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 import type { GpsEnforcement } from '@/lib/supabase/types'
@@ -14,20 +14,26 @@ export default function GpsEnforcementSettings() {
   const { toast } = useToast()
   const [mode, setMode] = useState<GpsEnforcement | null>(null)
   const [saving, setSaving] = useState(false)
+  const touched = useRef(false) // a late initial load must not override the admin's choice
 
   useEffect(() => {
-    fetch('/api/admin/gps-settings').then(r => r.json()).then(j => setMode(j.gps_enforcement ?? 'warn')).catch(() => setMode('warn'))
+    fetch('/api/admin/gps-settings').then(r => r.json())
+      .then(j => { if (!touched.current) setMode(j.gps_enforcement ?? 'warn') })
+      .catch(() => { if (!touched.current) setMode('warn') })
   }, [])
 
   async function choose(next: GpsEnforcement) {
     if (next === mode || saving) return
+    touched.current = true
+    const prev = mode
+    setMode(next) // optimistic; reverted below if the save fails
     setSaving(true)
     const res = await fetch('/api/admin/gps-settings', {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ gps_enforcement: next }),
     })
     const j = await res.json().catch(() => ({}))
-    if (res.ok) { setMode(next); toast('הגדרת אימות המיקום נשמרה', 'success') }
-    else toast(j.error ?? 'שגיאה בשמירה', 'error')
+    if (res.ok) toast('הגדרת אימות המיקום נשמרה', 'success')
+    else { setMode(prev); toast(j.error ?? 'שגיאה בשמירה', 'error') }
     setSaving(false)
   }
 

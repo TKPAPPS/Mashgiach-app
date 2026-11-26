@@ -104,6 +104,7 @@ export default function ScanPage() {
       setScanError(
         code === 'unauthorized' ? 'אינך משויך למקום זה'
         : code === 'forbidden' ? 'רק משגיחים יכולים לרשום סריקה.'
+        : code === 'error' ? 'הסריקה לא נשמרה בגלל תקלה בשרת. נסה שוב.'
         : gpsErrorMessage(code, data.distance, gpsError))
       setProcessing(false)
       return

@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
   if (rejected) internal_status = 'gps_rejected'
   else if (gps_check === 'too_far') internal_status = 'gps_mismatch'
 
-  const { data: visitLog } = await service.from('visit_logs').insert({
+  const { data: visitLog, error: insertError } = await service.from('visit_logs').insert({
     ...baseRow,
     location_id: location.id,
     action_type,
@@ -129,9 +129,14 @@ export async function POST(req: NextRequest) {
     gps_check,
   }).select('id').single()
 
+  // Never report a scan as recorded when the row was not written.
+  if (insertError || !visitLog) {
+    return NextResponse.json({ success: false, code: 'error' }, { status: 500 })
+  }
+
   // Alerts: always for a far scan; for other failures only when the scan was blocked
   // (in warn mode a missing GPS is flagged on the row itself, not as an alert).
-  if (visitLog && (gps_check === 'too_far' || rejected)) {
+  if (gps_check === 'too_far' || rejected) {
     await service.from('gps_alerts').insert({
       visit_log_id: visitLog.id,
       inspector_id: user.id,
@@ -168,7 +173,7 @@ export async function POST(req: NextRequest) {
     action_type,
     location_name: location.name,
     location_id: location.id,
-    visit_log_id: visitLog?.id ?? null,
+    visit_log_id: visitLog.id,
     has_checklist: action_type === 'exit' ? await hasChecklist(service) : false,
     gps_warning: failed ? gps_check : null,
   })
