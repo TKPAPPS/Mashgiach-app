@@ -1,5 +1,37 @@
 # Changelog
 
+## 2026-11-26: Forgot-exit push for inspectors, proof photo per checklist item, push sign-up fixed
+
+From the manager's fix list (points 7, 10 and 13).
+
+- **Push sign-up was broken for everyone**: `push_subscriptions.subscription` (jsonb) is NOT NULL but
+  `/api/push/subscribe` never sent it, so every sign-up failed silently (0 rows in the table) and no
+  admin push was ever delivered. The route now writes it, validates the body and returns 500 on a
+  failed save. Browsers that already hold a subscription re-save it on load (`readPushState()`), so
+  admins who turned the bell on before are repaired without doing anything.
+- **Forgot-exit reminder (7)**: inspectors turn on "התראות לטלפון" in the profile tab
+  (`components/inspector/PushCard.tsx`; iPhone gets the add-to-home-screen hint because Safari only
+  allows web push for installed apps). New cron route `/api/cron/forgot-exit` (CRON_SECRET, every
+  15 min via cron-job.org) pushes once per entry with no exit after `report_settings.forgot_exit_minutes`
+  (default 240, 0 = off; admin card "תזכורת למשגיח ששכח לסרוק יציאה" in the מנהלים tab, which also
+  shows how many inspectors turned push on). `visit_logs.reminder_sent_at` is claimed before sending,
+  so overlapping runs never double-push. Entries older than 12 h are skipped.
+- `notifyUsers(userIds, payload)` added beside `notifyAdmins` (`lib/utils/notifyAdmins.ts`); it only
+  deletes a subscription on 404/410 (before, any error deleted it). Browser push code moved to
+  `lib/utils/pushClient.ts`, shared by the admin bell and the inspector card. `sw.js` now focuses an
+  open app window on notification click instead of opening a new one.
+- **Proof photo per checklist item (10)**: a ticked item shows "צלם הוכחה" (camera only, up to 3 per
+  item) under its note. `visit_photos.checklist_item_id` (null = general visit photo; general photos
+  keep their limit of 10). The upload route checks the item belongs to the location. The checklist
+  page now reloads photos already taken (and re-ticks items that have proof) after a refresh. Admin:
+  shared `components/admin/VisitPhotosModal.tsx` groups photos by item (visit logs tab and the new
+  "הוכחה" column in the location window's בדיקות tab).
+- **Visit-logs camera icon never showed** for a 30-day view: `/api/admin/visit-photo-counts` put
+  every visit id into one `.in()` (thousands of ids), which returned nothing. It now queries in
+  chunks of 150. `by_item: true` returns per-item proof counts.
+- **Rotating QR / NFC (13)**: written proposal only, `docs/proposals/2026-11-26-rotating-qr-nfc.md`.
+- Migration `inspector_reminders_item_photos` (additive).
+
 ## 2026-11-26: Closed city list, kashrut type, restaurant menu; modals always on top
 
 From the manager's fix list (points 9, 5 and 11).

@@ -1,4 +1,5 @@
 'use client'
+import { readPushState, enablePush, disablePush } from '@/lib/utils/pushClient'
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -110,39 +111,16 @@ export default function AdminShell() {
   }
 
   useEffect(() => {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
-    navigator.serviceWorker.ready.then(reg => {
-      reg.pushManager.getSubscription().then(sub => setPushSubscribed(!!sub))
-    }).catch(() => {})
+    readPushState().then(st => setPushSubscribed(st === 'on')).catch(() => {})
   }, [])
 
   async function togglePush() {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-      alert('Push notifications are not supported in this browser.')
-      return
-    }
-    const reg = await navigator.serviceWorker.ready
-    const existing = await reg.pushManager.getSubscription()
-    if (existing) {
-      await existing.unsubscribe()
-      await fetch('/api/push/subscribe', {
-        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ endpoint: existing.endpoint }),
-      })
-      setPushSubscribed(false)
-    } else {
-      const permission = await Notification.requestPermission()
-      if (permission !== 'granted') return
-      const sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
-      })
-      await fetch('/api/push/subscribe', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(sub.toJSON()),
-      })
-      setPushSubscribed(true)
-    }
+    if (pushSubscribed) { await disablePush(); setPushSubscribed(false); return }
+    const st = await enablePush()
+    if (st === 'on') setPushSubscribed(true)
+    else if (st === 'denied') alert('ההתראות חסומות בדפדפן. אפשר אותן בהגדרות האתר ונסה שוב.')
+    else if (st === 'unsupported' || st === 'ios_needs_install') alert('הדפדפן הזה לא תומך בהתראות.')
+    else if (st === 'error') alert('הפעלת ההתראות נכשלה. נסה שוב.')
   }
 
   async function logout() {

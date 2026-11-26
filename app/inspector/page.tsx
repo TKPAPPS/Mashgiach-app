@@ -6,6 +6,7 @@ import { MapPin, QrCode, AlertTriangle, Calendar, User, LogOut, Trash2, History,
 import Image from 'next/image'
 import { formatRelative, formatDate } from '@/lib/utils/format'
 import PhotoAddControl from '@/components/ui/PhotoAddControl'
+import PushCard from '@/components/inspector/PushCard'
 import { toJpegFile } from '@/lib/utils/image'
 import type { Location, Profile, VisitLog } from '@/lib/supabase/types'
 import { MAX_VISIT_HOURS } from '@/lib/utils/gps'
@@ -731,6 +732,8 @@ function ProfileView({ profile, email }: { profile: Profile; email: string | nul
           {contractLoading ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'צפה בחוזה'}
         </button>
       )}
+
+      <PushCard />
 
       <InspectorHistory supabase={supabase} inspectorId={profile.id} />
 

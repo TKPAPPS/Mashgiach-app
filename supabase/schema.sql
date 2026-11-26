@@ -204,7 +204,10 @@ CREATE TABLE gps_alerts (
 CREATE TABLE push_subscriptions (
   id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id      uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-  subscription jsonb NOT NULL,
+  subscription jsonb NOT NULL,                 -- full PushSubscription JSON; /api/push/subscribe must send it
+  endpoint     text UNIQUE,                     -- upsert key
+  p256dh       text,
+  auth         text,
   created_at   timestamptz DEFAULT now()
 );
 
@@ -430,3 +433,14 @@ CREATE TABLE location_menu_files (
   uploaded_by uuid REFERENCES profiles(id) ON DELETE SET NULL,
   created_at  timestamptz NOT NULL DEFAULT now()
 );
+
+-- -------------------------------------------------------
+-- 26/11/2026: forgot-exit reminder + proof photo per checklist item
+-- (migration inspector_reminders_item_photos)
+-- -------------------------------------------------------
+ALTER TABLE report_settings ADD COLUMN forgot_exit_minutes integer NOT NULL DEFAULT 240
+  CHECK (forgot_exit_minutes = 0 OR forgot_exit_minutes BETWEEN 30 AND 720);  -- 0 = reminder off
+ALTER TABLE visit_logs ADD COLUMN reminder_sent_at timestamptz;              -- set by /api/cron/forgot-exit
+ALTER TABLE visit_photos ADD COLUMN checklist_item_id uuid REFERENCES checklist_items(id) ON DELETE SET NULL;  -- null = general photo
+CREATE INDEX visit_photos_visit_item_idx ON visit_photos(visit_log_id, checklist_item_id);
+CREATE INDEX visit_logs_open_entry_idx ON visit_logs(created_at) WHERE action_type = 'entry' AND reminder_sent_at IS NULL;

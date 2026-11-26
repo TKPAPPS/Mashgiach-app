@@ -3,7 +3,8 @@ import { createClient, createServiceClient } from '@/lib/supabase/server'
 import sharp from 'sharp'
 
 const BUCKET = 'visit-photos'
-const MAX_PHOTOS = 10
+const MAX_PHOTOS = 10      // general visit photos
+const MAX_ITEM_PHOTOS = 3  // per checklist item (proof photo)
 const MAX_DIM = 1920
 const JPEG_QUALITY = 80
 
@@ -21,11 +22,11 @@ export async function GET(req: NextRequest) {
   const { data: log } = await service.from('visit_logs').select('id').eq('id', visit_log_id).eq('inspector_id', user.id).single()
   if (!log) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const { data: photos } = await service.from('visit_photos').select('id,photo_path,created_at').eq('visit_log_id', visit_log_id).order('created_at')
+  const { data: photos } = await service.from('visit_photos').select('id,photo_path,checklist_item_id,created_at').eq('visit_log_id', visit_log_id).order('created_at')
 
   const result = await Promise.all((photos ?? []).map(async (p) => {
     const { data } = await service.storage.from(BUCKET).createSignedUrl(p.photo_path, 3600)
-    return { id: p.id, url: data?.signedUrl ?? null, created_at: p.created_at }
+    return { id: p.id, url: data?.signedUrl ?? null, checklist_item_id: p.checklist_item_id, created_at: p.created_at }
   }))
 
   return NextResponse.json(result)
@@ -39,6 +40,8 @@ export async function POST(req: NextRequest) {
   const form = await req.formData()
   const visit_log_id = form.get('visit_log_id') as string | null
   const file = form.get('file') as File | null
+  const rawItem = form.get('checklist_item_id')
+  const checklist_item_id = typeof rawItem === 'string' && rawItem ? rawItem : null
 
   if (!visit_log_id || !file) return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
 
@@ -48,9 +51,22 @@ export async function POST(req: NextRequest) {
   const { data: log } = await service.from('visit_logs').select('id,location_id').eq('id', visit_log_id).eq('inspector_id', user.id).single()
   if (!log) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  // Enforce max 10 photos per visit
-  const { count } = await service.from('visit_photos').select('*', { count: 'exact', head: true }).eq('visit_log_id', visit_log_id)
-  if ((count ?? 0) >= MAX_PHOTOS) return NextResponse.json({ error: 'max_photos', message: 'הגעת למקסימום 10 תמונות לביקור' }, { status: 400 })
+  // A proof photo must belong to an active checklist item of this location (or the global list).
+  if (checklist_item_id) {
+    const { data: item } = await service.from('checklist_items').select('id,location_id').eq('id', checklist_item_id).eq('active', true).maybeSingle()
+    if (!item || (item.location_id && item.location_id !== log.location_id)) {
+      return NextResponse.json({ error: 'invalid_item', message: 'פריט בדיקה לא תקין' }, { status: 400 })
+    }
+  }
+
+  // Limits: 10 general photos per visit, 3 per checklist item.
+  let countQuery = service.from('visit_photos').select('*', { count: 'exact', head: true }).eq('visit_log_id', visit_log_id)
+  countQuery = checklist_item_id ? countQuery.eq('checklist_item_id', checklist_item_id) : countQuery.is('checklist_item_id', null)
+  const { count } = await countQuery
+  const max = checklist_item_id ? MAX_ITEM_PHOTOS : MAX_PHOTOS
+  if ((count ?? 0) >= max) {
+    return NextResponse.json({ error: 'max_photos', message: checklist_item_id ? `עד ${MAX_ITEM_PHOTOS} תמונות לכל בדיקה` : `הגעת למקסימום ${MAX_PHOTOS} תמונות לביקור` }, { status: 400 })
+  }
 
   // Optimize with sharp: resize + JPEG compress
   const buffer = Buffer.from(await file.arrayBuffer())
@@ -74,11 +90,12 @@ export async function POST(req: NextRequest) {
     inspector_id: user.id,
     location_id: log.location_id ?? null,
     photo_path: path,
-  }).select('id,photo_path,created_at').single()
+    checklist_item_id,
+  }).select('id,photo_path,checklist_item_id,created_at').single()
 
   const { data: signed } = await service.storage.from(BUCKET).createSignedUrl(path, 3600)
 
-  return NextResponse.json({ id: photo?.id, url: signed?.signedUrl ?? null, created_at: photo?.created_at })
+  return NextResponse.json({ id: photo?.id, url: signed?.signedUrl ?? null, checklist_item_id: photo?.checklist_item_id ?? null, created_at: photo?.created_at })
 }
 
 export async function DELETE(req: NextRequest) {
