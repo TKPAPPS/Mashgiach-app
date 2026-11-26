@@ -3,11 +3,12 @@ import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
-import { formatDateTime } from '@/lib/utils/format'
+import { formatDateTime, KASHRUT_TYPE_LABELS } from '@/lib/utils/format'
+import MenuSection from '@/components/MenuSection'
 import type { Location, VisitLog, DeficiencyReport, VisitCheck, Profile, ChecklistItem } from '@/lib/supabase/types'
 import { Upload, Trash2, ExternalLink, X } from 'lucide-react'
 
-type InnerTab = 'info' | 'kashrus' | 'certificate' | 'procedure' | 'inspectors' | 'deficiencies' | 'checks' | 'visits'
+type InnerTab = 'info' | 'kashrus' | 'menu' | 'certificate' | 'procedure' | 'inspectors' | 'deficiencies' | 'checks' | 'visits'
 type ProcPhoto = { id: string; note: string | null; url: string | null }
 
 export default function LocationDetailModal({ loc, onClose }: { loc: Location; onClose: () => void }) {
@@ -230,6 +231,7 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
     { id: 'info',         label: 'פרטי קשר' },
     { id: 'kashrus',      label: 'נוהל כשרות' },
     { id: 'procedure',    label: 'נוהל עבודה' },
+    { id: 'menu',         label: 'תפריט' },
     { id: 'certificate',  label: 'תעודת כשרות' },
     { id: 'inspectors',   label: 'משגיחים' },
     { id: 'deficiencies', label: 'ליקויים' },
@@ -238,7 +240,7 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
   ]
 
   return (
-    <Modal open onClose={onClose} title={`${loc.name}${loc.city ? `, ${loc.city}` : ''}`} size="xl">
+    <Modal open onClose={onClose} title={`${loc.name}${location.city ? `, ${location.city}` : ''}${location.kashrut_type ? ` (${KASHRUT_TYPE_LABELS[location.kashrut_type]})` : ''}`} size="xl">
       <div className="innerTabs">
         {INNER_TABS.map(t => (
           <button key={t.id} className={`innerTab${tab === t.id ? ' innerTab--active' : ''}`}
@@ -529,6 +531,21 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
       )}
 
       {/* Visits */}
+      {/* Menu: text + photos/PDFs */}
+      {tab === 'menu' && (
+        <MenuSection
+          key={`menu-${location.updated_at ?? 'loading'}`}
+          locationId={loc.id}
+          apiBase="/api/admin/menu-files"
+          initialText={location.menu_text}
+          onSaveText={async text => {
+            const { error, data } = await supabase.from('locations').update({ menu_text: text || null }).eq('id', loc.id).select().single()
+            if (!error && data) setLocation(data as Location)
+            return !error
+          }}
+        />
+      )}
+
       {tab === 'visits' && (
         <div className="tableWrap">
           {visits.length === 0 ? <div className="emptyState">אין כניסות/יציאות.</div> :

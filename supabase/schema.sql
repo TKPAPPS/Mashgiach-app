@@ -395,3 +395,38 @@ CREATE POLICY "sc_self_select"        ON scan_corrections FOR SELECT TO authenti
 --   "admin-reports"      (private) - admin location report attachments
 --   "documents"          (private) - standalone documents/contracts library
 --   "procedure-photos"   (private) - oven/appliance photos for procedures
+
+
+-- -------------------------------------------------------
+-- 2026-11-26 migration location_data_cities_kashrut_menu
+-- -------------------------------------------------------
+-- Closed city list. locations.city is DERIVED from city_id (Hebrew name) by the
+-- trigger locations_sync_city; renaming a city re-syncs its locations
+-- (cities_propagate_name). Free text cannot be written to locations.city.
+CREATE TABLE cities (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name_he    text NOT NULL UNIQUE,
+  name_en    text,
+  active     boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+-- RLS: cities_select (authenticated read), cities_admin_all (mashgiach_is_admin()).
+ALTER TABLE locations ADD COLUMN city_id uuid REFERENCES cities(id) ON DELETE RESTRICT;
+ALTER TABLE locations ADD COLUMN kashrut_type text CHECK (kashrut_type IN ('meat','dairy','fish'));
+ALTER TABLE locations ADD COLUMN menu_text text;
+-- Triggers: locations_sync_city (BEFORE INSERT OR UPDATE ON locations),
+--           cities_propagate_name (AFTER UPDATE ON cities).
+
+-- Menu files (photos as JPEG, PDFs) in the private bucket 'menu-files' (10 MB,
+-- image/jpeg + application/pdf). RLS enabled with no policies: service-role
+-- routes /api/admin/menu-files and /api/inspector/menu-files only.
+CREATE TABLE location_menu_files (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  location_id uuid NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+  file_path   text NOT NULL,
+  file_name   text,
+  mime        text NOT NULL,
+  size_bytes  integer,
+  uploaded_by uuid REFERENCES profiles(id) ON DELETE SET NULL,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);

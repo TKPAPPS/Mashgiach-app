@@ -294,6 +294,10 @@ body {
 .badge--danger  { background: var(--danger-light);  color: var(--danger); }
 .badge--muted   { background: #EEF2FA; color: var(--muted); border: 1px solid var(--border); }
 .badge--primary { background: var(--primary-faint); color: var(--primary); }
+/* Kashrut type: meat red, dairy blue, fish teal (text colours pass AA on their tints) */
+.kashrutBadge--meat  { background: #fee2e2; color: #b91c1c; }
+.kashrutBadge--dairy { background: #dbeafe; color: #1d4ed8; }
+.kashrutBadge--fish  { background: #ccfbf1; color: #0f766e; }
 .badge--gold    { background: var(--gold-light); color: var(--gold-dark); }
 .badge--info    { background: #EFF6FF; color: #2563eb; }
 

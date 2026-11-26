@@ -4,7 +4,8 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { ArrowRight, ExternalLink, QrCode, Camera, X, Trash2, Download } from 'lucide-react'
 import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react'
-import { formatRelative } from '@/lib/utils/format'
+import { formatRelative, KASHRUT_TYPE_LABELS } from '@/lib/utils/format'
+import MenuSection from '@/components/MenuSection'
 import { useToast } from '@/components/ui/Toast'
 import { toJpegFile } from '@/lib/utils/image'
 import PhotoAddControl from '@/components/ui/PhotoAddControl'
@@ -350,6 +351,9 @@ export default function InspectorLocationPage({ params }: { params: Promise<{ id
         <div className="card">
           <div className="card__header"><div className="card__title">פרטי מקום</div></div>
           <div className="card__body" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {location.kashrut_type && (
+              <div><span className={`badge kashrutBadge kashrutBadge--${location.kashrut_type}`}>{KASHRUT_TYPE_LABELS[location.kashrut_type]}</span></div>
+            )}
             {location.city && <div><span className="textMuted textSm">עיר: </span>{location.city}</div>}
             {location.address && <div><span className="textMuted textSm">כתובת: </span>{location.address}</div>}
             {location.contact_name && <div><span className="textMuted textSm">איש קשר: </span>{location.contact_name}</div>}
@@ -489,6 +493,25 @@ export default function InspectorLocationPage({ params }: { params: Promise<{ id
                 <ExternalLink size={13} /> תעודת כשרות
               </a>
             )}
+          </div>
+        </div>
+
+        {/* Menu: text + photos/PDFs, editable by the assigned inspector */}
+        <div className="card">
+          <div className="card__header"><div className="card__title">תפריט</div></div>
+          <div className="card__body">
+            <MenuSection
+              locationId={id}
+              apiBase="/api/inspector/menu-files"
+              initialText={location.menu_text}
+              onSaveText={async text => {
+                const res = await fetch('/api/inspector/procedure', {
+                  method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ location_id: id, menu_text: text }),
+                })
+                return res.ok
+              }}
+            />
           </div>
         </div>
 

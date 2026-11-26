@@ -332,7 +332,7 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
       <div className="card">
         <div className="card__header--inline">
           <div className="card__title">סינון</div>
-          <CitiesManager locations={locations} onChanged={onCitiesChanged} />
+          <CitiesManager onChanged={onCitiesChanged} />
         </div>
         <div className="card__body">
           <div className="filtersGrid">

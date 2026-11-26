@@ -4,8 +4,10 @@ import { createClient } from '@/lib/supabase/client'
 import { Plus, Pen, Trash2, QrCode, MapPin, Eye, ArrowUp, ArrowDown, ArrowUpDown, Search } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
-import { genQrCode } from '@/lib/utils/format'
-import type { Location } from '@/lib/supabase/types'
+import { genQrCode, KASHRUT_TYPE_LABELS } from '@/lib/utils/format'
+import type { Location, KashrutType } from '@/lib/supabase/types'
+
+type CityOption = { id: string; name_he: string }
 import LocationDetailModal from './LocationDetailModal'
 import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react'
 
@@ -26,10 +28,12 @@ type PinSuggestion = {
 function LocationForm({
   loc,
   formId,
+  cities,
   onSubmit,
 }: {
   loc?: Location
   formId: string
+  cities: CityOption[]
   onSubmit: (e: FormEvent<HTMLFormElement>) => void
 }) {
   const [qr, setQr] = useState(() => loc?.qr_code ?? genQrCode())
@@ -43,8 +47,19 @@ function LocationForm({
       {/* Basic info */}
       <div className="fieldRow">
         <label className="field"><span>שם המקום *</span><input name="name" required defaultValue={loc?.name} /></label>
-        <label className="field"><span>עיר</span><input name="city" defaultValue={loc?.city ?? ''} /></label>
+        <label className="field"><span>עיר *</span>
+          <select name="city_id" required defaultValue={loc?.city_id ?? ''}>
+            <option value="" disabled>בחר עיר</option>
+            {cities.map(c => <option key={c.id} value={c.id}>{c.name_he}</option>)}
+          </select>
+        </label>
       </div>
+      <label className="field"><span>סוג כשרות</span>
+        <select name="kashrut_type" defaultValue={loc?.kashrut_type ?? ''}>
+          <option value="">לא הוגדר</option>
+          {(Object.keys(KASHRUT_TYPE_LABELS) as KashrutType[]).map(k => <option key={k} value={k}>{KASHRUT_TYPE_LABELS[k]}</option>)}
+        </select>
+      </label>
       <label className="field"><span>כתובת</span><input name="address" defaultValue={loc?.address ?? ''} /></label>
 
       {/* QR code */}
@@ -113,7 +128,9 @@ export default function LocationsTab({ refreshKey }: Props) {
   const [qrLoc, setQrLoc] = useState<Location | null>(null)
   const qrCanvasRef = useRef<HTMLCanvasElement>(null)
   const [saving, setSaving] = useState(false)
-  const [sortKey, setSortKey] = useState<'name' | 'city' | 'address' | 'qr_code' | 'gps' | 'status'>('name')
+  const [sortKey, setSortKey] = useState<'name' | 'city' | 'kashrut_type' | 'address' | 'qr_code' | 'gps' | 'status'>('name')
+  const [cities, setCities] = useState<CityOption[]>([])
+  const [typeFilter, setTypeFilter] = useState<'' | KashrutType | 'none'>('')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [citySearch, setCitySearch] = useState('')
   const [groupByCity, setGroupByCity] = useState(true)
@@ -162,6 +179,7 @@ export default function LocationsTab({ refreshKey }: Props) {
     switch (sortKey) {
       case 'name':    va = a.name ?? '';    vb = b.name ?? '';    break
       case 'city':    va = a.city ?? '';    vb = b.city ?? '';    break
+      case 'kashrut_type': va = a.kashrut_type ? KASHRUT_TYPE_LABELS[a.kashrut_type] : ''; vb = b.kashrut_type ? KASHRUT_TYPE_LABELS[b.kashrut_type] : ''; break
       case 'address': va = a.address ?? ''; vb = b.address ?? ''; break
       case 'qr_code': va = a.qr_code ?? ''; vb = b.qr_code ?? ''; break
       case 'gps':     va = a.lat != null ? '1' : '0'; vb = b.lat != null ? '1' : '0'; break
@@ -180,6 +198,7 @@ export default function LocationsTab({ refreshKey }: Props) {
   const q = norm(citySearch)
   const filtered = sorted.filter(l =>
     (showInactive || l.status === 'active') &&
+    (!typeFilter || (typeFilter === 'none' ? !l.kashrut_type : l.kashrut_type === typeFilter)) &&
     (!q || norm(l.name ?? '').includes(q) || norm(l.city ?? '').includes(q) || norm(l.address ?? '').includes(q))
   )
 
@@ -204,9 +223,12 @@ export default function LocationsTab({ refreshKey }: Props) {
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase.from('locations')
-      .select('id,name,city,address,qr_code,lat,lng,status').order('name')
+    const [{ data }, { data: cityRows }] = await Promise.all([
+      supabase.from('locations').select('id,name,city,city_id,kashrut_type,address,qr_code,lat,lng,status').order('name'),
+      supabase.from('cities').select('id,name_he').eq('active', true).order('name_he'),
+    ])
     setLocations((data ?? []) as Location[])
+    setCities((cityRows ?? []) as CityOption[])
     setLoading(false)
   }
 
@@ -221,9 +243,9 @@ export default function LocationsTab({ refreshKey }: Props) {
     const fd = new FormData(e.currentTarget)
     const basePayload = {
       name:               fd.get('name') as string,
-      // Trim city so values stay consistent (the city manager groups/matches on
-      // exact text; stray whitespace would orphan a city from rename/delete).
-      city:               ((fd.get('city') as string) || '').trim() || null,
+      // City comes from the closed list; locations.city (the name) is set by a DB trigger.
+      city_id:            (fd.get('city_id') as string) || null,
+      kashrut_type:       ((fd.get('kashrut_type') as string) || null) as KashrutType | null,
       address:            (fd.get('address') as string) || null,
       qr_code:            fd.get('qr_code') as string,
       lat:                fd.get('lat') ? Number(fd.get('lat')) : null,
@@ -244,6 +266,7 @@ export default function LocationsTab({ refreshKey }: Props) {
     } else {
       const { data: created, error } = await supabase.from('locations').insert({
         ...basePayload,
+        city: null, // overwritten by the DB trigger from city_id
         kashrus_procedure_file_url: null,
         kashrus_certificate_url: null,
       }).select().single()
@@ -308,6 +331,12 @@ export default function LocationsTab({ refreshKey }: Props) {
               <input type="checkbox" checked={groupByCity} onChange={e => setGroupByCity(e.target.checked)} />
               קבץ לפי עיר
             </label>
+            <select value={typeFilter} onChange={e => setTypeFilter(e.target.value as typeof typeFilter)} aria-label="סינון לפי סוג כשרות"
+              style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '6px 8px', fontSize: '.82rem' }}>
+              <option value="">כל הסוגים</option>
+              {(Object.keys(KASHRUT_TYPE_LABELS) as KashrutType[]).map(k => <option key={k} value={k}>{KASHRUT_TYPE_LABELS[k]}</option>)}
+              <option value="none">ללא סוג</option>
+            </select>
             {inactiveCount > 0 && (
               <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '.82rem', color: 'var(--muted)', cursor: 'pointer', userSelect: 'none' }}>
                 <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />
@@ -327,6 +356,7 @@ export default function LocationsTab({ refreshKey }: Props) {
                   {([
                     ['name',    'שם המקום'],
                     ['city',    'עיר'],
+                    ['kashrut_type', 'סוג'],
                     ['address', 'כתובת'],
                     ['qr_code', 'קוד QR'],
                     ['gps',     'GPS'],
@@ -346,7 +376,7 @@ export default function LocationsTab({ refreshKey }: Props) {
                 <tbody key={group.key || '__all__'}>
                   {groupByCity && (
                     <tr>
-                      <th colSpan={7} style={{ textAlign: 'start', background: 'var(--bg-muted, #f5f5f5)', fontSize: '.8rem', fontWeight: 700, padding: '6px 12px' }}>
+                      <th colSpan={8} style={{ textAlign: 'start', background: 'var(--bg-muted, #f5f5f5)', fontSize: '.8rem', fontWeight: 700, padding: '6px 12px' }}>
                         {group.label} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>({group.items.length})</span>
                       </th>
                     </tr>
@@ -360,6 +390,9 @@ export default function LocationsTab({ refreshKey }: Props) {
                         </div>
                       </td>
                       <td>{loc.city ?? <span className="mutedCell">-</span>}</td>
+                      <td>{loc.kashrut_type
+                        ? <span className={`badge kashrutBadge kashrutBadge--${loc.kashrut_type}`}>{KASHRUT_TYPE_LABELS[loc.kashrut_type]}</span>
+                        : <span className="mutedCell">-</span>}</td>
                       <td>{loc.address ?? <span className="mutedCell">-</span>}</td>
                       <td><code className="qrCodeText">{loc.qr_code}</code></td>
                       <td>
@@ -400,7 +433,7 @@ export default function LocationsTab({ refreshKey }: Props) {
             {saving ? <span className="spinner" /> : 'שמור מקום'}
           </button>
         </>}>
-        {addOpen && <LocationForm formId="loc-add-form" onSubmit={handleSave} />}
+        {addOpen && <LocationForm formId="loc-add-form" cities={cities} onSubmit={handleSave} />}
       </Modal>
 
       {/* Edit modal */}
@@ -411,7 +444,7 @@ export default function LocationsTab({ refreshKey }: Props) {
             {saving ? <span className="spinner" /> : 'שמור שינויים'}
           </button>
         </>}>
-        {editLoc && <LocationForm formId="loc-edit-form" loc={editLoc} onSubmit={handleSave} />}
+        {editLoc && <LocationForm formId="loc-edit-form" loc={editLoc} cities={cities} onSubmit={handleSave} />}
       </Modal>
 
       {/* Delete confirm */}
