@@ -57,7 +57,7 @@ app/
   inspector/location/[id] → location detail
   api/
     admin/                → admin API routes (all require requireAdmin())
-    inspector/            → inspector API routes (require auth, not role check)
+    inspector/            → inspector API routes (require auth; /scan also requires role 'mashgiach')
     push/                 → subscribe (POST/DELETE) and notify (POST, admin only)
 
 components/admin/         → all admin tab components
@@ -104,7 +104,7 @@ async function requireAdmin() {
 }
 ```
 
-Inspector API routes authenticate but do NOT check role (inspectors hit `/api/inspector/*`).
+Inspector API routes authenticate but most do NOT check role. Exception: `/api/inspector/scan` returns 403 unless `profiles.role = 'mashgiach'`.
 
 **Error messages**: return generic Hebrew strings (`'שגיאה בשמירה'` etc.), not raw `error.message` from Supabase — schema fingerprinting risk.
 
@@ -123,13 +123,13 @@ The utility handles VAPID config check, fetches admin subscriptions, sends via `
 
 ## Inspector scan flow (security design)
 
-- `/api/inspector/scan` always returns `{ success: true }` to the inspector regardless of outcome
-- Internal status logged privately in `visit_logs.internal_status`
-- Four statuses: `success`, `unauthorized`, `invalid_location`, `gps_mismatch`
-- GPS threshold: 100 metres (`GPS_THRESHOLD_METERS` in `lib/utils/gps.ts`)
-- `gps_mismatch` creates a `gps_alerts` row (admin-visible, dismissible; includes `visit_log_id` for GPS coord lookup)
+- Only `mashgiach` role may scan (403 `forbidden` otherwise). Times are always the DB `now()`; the client sends no timestamp, and there is no inspector INSERT policy on `visit_logs` (only the service-role route writes).
+- Response codes: `invalid_qr`, `unauthorized` (not assigned), `forbidden`, and when GPS blocks: `no_gps`, `low_accuracy`, `too_far`, `location_no_coords`. On success it may carry `gps_warning` (warn mode) and `duplicate: true` (debounced rescan).
+- `visit_logs.internal_status`: `success`, `gps_mismatch` (counted visits), `gps_rejected`, `unauthorized`, `invalid_location`, `error` (audit rows, never visits). Anything that derives visit state must use only `success` + `gps_mismatch`.
+- `visit_logs.gps_check` from `evaluateGps()` (`lib/utils/gps.ts`): too far = raw distance > `GPS_THRESHOLD_METERS` (100) + min(accuracy, 50); accuracy > `GPS_MAX_ACCURACY_M` (300) is `low_accuracy`; location with no lat/lng is `location_no_coords`.
+- GPS policy `report_settings.gps_enforcement` (`off` / `warn` / `block`), set in the Admins tab card "אימות מיקום בסריקה" via `/api/admin/gps-settings` (its own route, so the report-settings PUT never overwrites it). `block` saves the scan as `gps_rejected`, creates a `gps_alerts` row with `alert_type`, and the scan page offers a button to the scan-correction form. `warn` counts the scan and flags it.
+- Entry/exit toggle: last counted row only. An entry older than `MAX_VISIT_HOURS` (12) is left open and the scan becomes a new entry. A rescan within `SCAN_DEBOUNCE_MS` (2 min) returns the existing row and writes nothing.
 - On successful exit scan, API returns `visit_log_id` and `location_id`. Scan page redirects to checklist if active items exist.
-- On successful entry scan, "צפה בפרטי המקום" button navigates to `/inspector/location/{location_id}`
 
 ## Inspector forms: must call API routes
 
@@ -293,7 +293,7 @@ Inspector home location cards show "בפנים" (entry) or "בחוץ" (exit / no
 
 ## GPS alert lifecycle
 
-Dashboard alerts appear when inspector scans from >100m. Individual dismiss ("סמן כנקרא") or bulk dismiss. `gps_alerts` joins `visit_logs` to expose `device_lat`/`device_lng` for a Google Maps link in the alerts table. Only `read` flag changes; rows are permanent.
+Dashboard alerts appear when an inspector scans from >100m, or (block mode) when a scan is rejected for GPS; `gps_alerts.alert_type` says which. Individual dismiss ("סמן כנקרא") or bulk dismiss. `gps_alerts` joins `visit_logs` to expose `device_lat`/`device_lng` for a Google Maps link in the alerts table. Only `read` flag changes; rows are permanent.
 
 ## Replacement inspector selection
 

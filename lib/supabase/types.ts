@@ -1,7 +1,10 @@
 export type Role = 'admin' | 'mashgiach'
 export type LocationStatus = 'active' | 'inactive'
 export type ActionType = 'entry' | 'exit'
-export type VisitStatus = 'success' | 'unauthorized' | 'invalid_location' | 'gps_mismatch' | 'error'
+export type VisitStatus = 'success' | 'unauthorized' | 'invalid_location' | 'gps_mismatch' | 'gps_rejected' | 'error'
+export type GpsCheck = 'ok' | 'no_gps' | 'low_accuracy' | 'too_far' | 'location_no_coords'
+export type GpsAlertType = 'gps_mismatch' | 'no_gps' | 'low_accuracy' | 'location_no_coords' | 'impossible_travel'
+export type GpsEnforcement = 'off' | 'warn' | 'block'
 export type ReportType = 'deficiency' | 'note'
 export type AdminStatus = 'open' | 'in_progress' | 'resolved'
 export type RequestType = 'vacation' | 'absence' | 'replacement' | 'other'
@@ -58,6 +61,7 @@ export type VisitLog = {
   manual_correction?: boolean
   distance_meters: number | null
   internal_status: VisitStatus
+  gps_check?: GpsCheck | null
   qr_code_scanned: string | null
   created_at: string
   inspector?: Pick<Profile, 'id' | 'full_name'>
@@ -223,6 +227,7 @@ export type GpsAlert = {
   location_id: string | null
   action_type: string | null
   distance_meters: number | null
+  alert_type?: GpsAlertType
   read: boolean
   created_at: string
   inspector?: Pick<Profile, 'id' | 'full_name'>
@@ -264,6 +269,7 @@ export type ReportSettings = {
   monthly_enabled: boolean
   monthly_sections: ReportSection[]
   monthly_last_sent_month: string | null   // 'YYYY-MM', Asia/Bangkok
+  gps_enforcement?: GpsEnforcement
   updated_at: string
 }
 

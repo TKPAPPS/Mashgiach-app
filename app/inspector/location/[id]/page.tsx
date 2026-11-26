@@ -158,6 +158,7 @@ export default function InspectorLocationPage({ params }: { params: Promise<{ id
       supabase.from('locations').select('*').eq('id', id).single(),
       supabase.from('inspector_locations').select('id').eq('inspector_id', user.id).eq('location_id', id).maybeSingle(),
       supabase.from('visit_logs').select('*').eq('location_id', id).eq('inspector_id', user.id)
+        .in('internal_status', ['success', 'gps_mismatch'])
         .order('created_at', { ascending: false }).limit(10),
       supabase.from('checklist_items').select('*').eq('active', true).eq('location_id', id).order('sort_order'),
     ])
