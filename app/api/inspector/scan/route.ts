@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import {
-  evaluateGps, MAX_VISIT_HOURS, SCAN_DEBOUNCE_MS,
+  evaluateGps, impossibleTravel, MAX_VISIT_HOURS, SCAN_DEBOUNCE_MS, IMPOSSIBLE_TRAVEL_WINDOW_H,
   type GpsCheck, type GpsEnforcement,
 } from '@/lib/utils/gps'
 import { notifyAdmins } from '@/lib/utils/notifyAdmins'
@@ -146,6 +146,34 @@ export async function POST(req: NextRequest) {
       alert_type: alertType(gps_check),
       read: false,
     })
+  }
+
+  // Impossible travel: compare with this inspector's previous scan that had a
+  // location (any restaurant, any status). Recorded as its own alert.
+  if (lat != null && lng != null) {
+    const since = new Date(Date.now() - IMPOSSIBLE_TRAVEL_WINDOW_H * 3600_000).toISOString()
+    const { data: prev } = await service.from('visit_logs')
+      .select('device_lat,device_lng,created_at')
+      .eq('inspector_id', user.id).neq('id', visitLog.id)
+      .not('device_lat', 'is', null).gte('created_at', since)
+      .order('created_at', { ascending: false }).limit(1).maybeSingle()
+    const jump = prev?.device_lat != null && prev.device_lng != null
+      ? impossibleTravel({ lat: prev.device_lat, lng: prev.device_lng, at: prev.created_at }, { lat, lng, at: new Date().toISOString() })
+      : null
+    if (jump) {
+      await service.from('gps_alerts').insert({
+        visit_log_id: visitLog.id,
+        inspector_id: user.id,
+        location_id: location.id,
+        action_type,
+        distance_meters: Math.round(jump.km * 1000),
+        alert_type: 'impossible_travel',
+        read: false,
+      })
+      try {
+        await notifyAdmins({ title: 'נסיעה בלתי אפשרית', body: `${location.name}: ${Math.round(jump.km)} ק״מ מהסריקה הקודמת`, url: '/admin' })
+      } catch { /* non-fatal */ }
+    }
   }
 
   await service.from('system_logs').insert({

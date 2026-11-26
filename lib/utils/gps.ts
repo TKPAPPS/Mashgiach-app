@@ -44,3 +44,22 @@ export function evaluateGps(
   if (distance > GPS_THRESHOLD_METERS + allowance) return { check: 'too_far', distance }
   return { check: 'ok', distance }
 }
+
+/** Impossible travel: two scans by the same inspector further apart than
+ *  IMPOSSIBLE_TRAVEL_MIN_KM, at a speed above IMPOSSIBLE_TRAVEL_KMH, within
+ *  IMPOSSIBLE_TRAVEL_WINDOW_H. On the history up to 26/11/2026 this rule matched
+ *  no real inspector, so every alert is worth a look. */
+export const IMPOSSIBLE_TRAVEL_MIN_KM = 5
+export const IMPOSSIBLE_TRAVEL_KMH = 150
+export const IMPOSSIBLE_TRAVEL_WINDOW_H = 24
+
+export function impossibleTravel(
+  prev: { lat: number; lng: number; at: string },
+  cur: { lat: number; lng: number; at: string },
+): { km: number; kmh: number } | null {
+  const km = distanceMeters(prev.lat, prev.lng, cur.lat, cur.lng) / 1000
+  const hours = Math.max((new Date(cur.at).getTime() - new Date(prev.at).getTime()) / 3600_000, 1 / 60)
+  if (hours > IMPOSSIBLE_TRAVEL_WINDOW_H) return null
+  const kmh = km / hours
+  return km > IMPOSSIBLE_TRAVEL_MIN_KM && kmh > IMPOSSIBLE_TRAVEL_KMH ? { km, kmh } : null
+}

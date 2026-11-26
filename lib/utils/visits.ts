@@ -42,7 +42,9 @@ export function isCounted(l: Pick<PairLog, 'internal_status'>): boolean {
  * - Two entries in a row: the first is "no_exit".
  */
 export function pairVisits<L extends PairLog>(logs: L[], now: number = Date.now()): VisitPair<L>[] {
-  const sorted = logs.filter(isCounted).sort((a, b) => a.created_at.localeCompare(b.created_at))
+  // Rows whose inspector was deleted have inspector_id null; they belong to
+  // different people, so they must never pair with each other.
+  const sorted = logs.filter(l => isCounted(l) && !!l.inspector_id).sort((a, b) => a.created_at.localeCompare(b.created_at))
   const open = new Map<string, L>()
   const out: VisitPair<L>[] = []
   const flag = (l: L | null) => !!l && l.internal_status === 'gps_mismatch'
