@@ -118,9 +118,13 @@ import { notifyAdmins } from '@/lib/utils/notifyAdmins'
 await notifyAdmins({ title: '...', body: '...', url: '/admin' })
 ```
 
-The utility handles VAPID config check, fetches admin subscriptions, sends via `web-push`, and cleans up expired subscriptions.
+The utility handles VAPID config check, fetches admin subscriptions, sends via `web-push`, and cleans up expired subscriptions (404/410 only). To push specific users (e.g. one inspector) use `notifyUsers(userIds, payload)` from the same file; it returns the user ids that received it.
 
-**Push subscription UI**: a Bell/BellOff button in the admin header (`AdminShell.tsx`) calls `PushManager.subscribe()` and POSTs to `/api/push/subscribe`. The DELETE endpoint is scoped by `user_id` to prevent cross-user unsubscription.
+**Push subscription UI**: admins use the Bell/BellOff button in the header (`AdminShell.tsx`); inspectors use the "התראות לטלפון" card in the profile tab (`components/inspector/PushCard.tsx`). Both go through `lib/utils/pushClient.ts` (`readPushState`, `enablePush`, `disablePush`), which POSTs to `/api/push/subscribe`. `push_subscriptions.subscription` (jsonb) is NOT NULL: the route must keep writing it (until 26/11/2026 it did not, and every sign-up failed silently). `readPushState()` re-saves an existing browser subscription on load. On iPhone, web push works only when the app is installed to the home screen. The DELETE endpoint is scoped by `user_id` to prevent cross-user unsubscription.
+
+## Forgot-exit reminder
+
+`/api/cron/forgot-exit` (CRON_SECRET; cron-job.org every 15 minutes) pushes an inspector once per entry that has no later counted scan at that location after `report_settings.forgot_exit_minutes` (default 240, 0 = off, set in the מנהלים tab via `/api/admin/gps-settings`). It claims `visit_logs.reminder_sent_at` before sending, so a run never repeats. Entries older than `MAX_VISIT_HOURS` are skipped. Logic in `lib/utils/forgotExit.ts`. Inspectors without push turned on get nothing; the admin card shows how many have it on.
 
 ## Inspector scan flow (security design)
 
@@ -254,6 +258,8 @@ Table `cities` (`name_he` unique, `name_en`, `active`). A location points to a c
 ## Inspector photo uploads (camera + gallery)
 
 All inspector photo pickers use the shared `components/ui/PhotoAddControl.tsx`: two buttons, "צלם" (a `capture="environment"` input) and "מהגלריה" (no `capture`). Used by the visit checklist, deficiency report (post-submit, via `report_photos`), and the location visit photo modal. Don't reintroduce a single camera-only input.
+
+Exception, on purpose: the **proof photo per checklist item** ("צלם הוכחה" under a ticked item in `app/inspector/checklist/page.tsx`) is camera only, because it proves the check was done now. Stored in `visit_photos` with `checklist_item_id` (null = general visit photo). Limits: 10 general photos per visit, 3 per item. Admins see them grouped by item in `components/admin/VisitPhotosModal.tsx` (visit logs tab, and the "הוכחה" column of the location window's בדיקות tab). `/api/admin/visit-photo-counts` queries ids in chunks of 150; never put thousands of ids in one `.in()`.
 
 ## Inspector scan UX
 

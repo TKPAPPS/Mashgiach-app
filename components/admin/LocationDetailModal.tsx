@@ -5,8 +5,9 @@ import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import { formatDateTime, KASHRUT_TYPE_LABELS } from '@/lib/utils/format'
 import MenuSection from '@/components/MenuSection'
+import VisitPhotosModal from './VisitPhotosModal'
 import type { Location, VisitLog, DeficiencyReport, VisitCheck, Profile, ChecklistItem } from '@/lib/supabase/types'
-import { Upload, Trash2, ExternalLink, X } from 'lucide-react'
+import { Upload, Trash2, ExternalLink, X, Camera } from 'lucide-react'
 
 type InnerTab = 'info' | 'kashrus' | 'menu' | 'certificate' | 'procedure' | 'inspectors' | 'deficiencies' | 'checks' | 'visits'
 type ProcPhoto = { id: string; note: string | null; url: string | null }
@@ -19,6 +20,8 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
   const [visits, setVisits] = useState<VisitLog[]>([])
   const [deficiencies, setDeficiencies] = useState<DeficiencyReport[]>([])
   const [checks, setChecks] = useState<VisitCheck[]>([])
+  const [proofCounts, setProofCounts] = useState<Record<string, number>>({})
+  const [photoVisit, setPhotoVisit] = useState<{ visitId: string; itemId: string | null } | null>(null)
   const [assignedInspectors, setAssignedInspectors] = useState<Profile[]>([])
   const [allInspectors, setAllInspectors] = useState<Profile[]>([])
   const [saving, setSaving] = useState(false)
@@ -153,6 +156,11 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
     setVisits((v ?? []) as VisitLog[])
     setDeficiencies((d ?? []) as DeficiencyReport[])
     setChecks((c ?? []) as VisitCheck[])
+    const visitIds = [...new Set(((c ?? []) as VisitCheck[]).map(x => x.visit_log_id).filter(Boolean))]
+    if (visitIds.length) {
+      fetch('/api/admin/visit-photo-counts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: visitIds, by_item: true }) })
+        .then(r => r.ok ? r.json() : {}).then(setProofCounts).catch(() => {})
+    }
     const inspList = (ai ?? []).map((r: { inspector: unknown }) => r.inspector as Profile)
     setAssignedInspectors(inspList)
     setAllInspectors((all ?? []) as Profile[])
@@ -512,14 +520,24 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
                   </div>
                   <div className="tableWrap" style={{ margin: 0 }}>
                     <table>
-                      <thead><tr><th>בדיקה</th><th>הערה</th></tr></thead>
+                      <thead><tr><th>בדיקה</th><th>הערה</th><th>הוכחה</th></tr></thead>
                       <tbody>
-                        {group.map(c => (
-                          <tr key={c.id}>
-                            <td>{c.item_name ?? '-'}</td>
-                            <td>{c.note ?? <span className="mutedCell">-</span>}</td>
-                          </tr>
-                        ))}
+                        {group.map(c => {
+                          const n = c.checklist_item_id ? proofCounts[`${c.visit_log_id}|${c.checklist_item_id}`] ?? 0 : 0
+                          return (
+                            <tr key={c.id}>
+                              <td>{c.item_name ?? '-'}</td>
+                              <td>{c.note ?? <span className="mutedCell">-</span>}</td>
+                              <td>{n > 0
+                                ? <button type="button" className="button button--ghost button--sm" style={{ gap: 4 }}
+                                    aria-label={`תמונות הוכחה: ${c.item_name ?? ''}`}
+                                    onClick={() => setPhotoVisit({ visitId: c.visit_log_id, itemId: c.checklist_item_id })}>
+                                    <Camera size={13} /> {n}
+                                  </button>
+                                : <span className="mutedCell">-</span>}</td>
+                            </tr>
+                          )
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -572,6 +590,9 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
             </tbody>
           </table>}
         </div>
+      )}
+      {photoVisit && (
+        <VisitPhotosModal visitLogId={photoVisit.visitId} focusItemId={photoVisit.itemId} onClose={() => setPhotoVisit(null)} />
       )}
     </Modal>
   )

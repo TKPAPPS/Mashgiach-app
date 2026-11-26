@@ -61,7 +61,7 @@ function addVisitMinutes(
 // monthly report silently covered only the first 1000 rows of the month).
 const PAGE = 1000
 type RangeQuery = { range: (from: number, to: number) => PromiseLike<{ data: unknown[] | null; error: unknown }> }
-async function fetchAll<T>(build: () => RangeQuery): Promise<{ data: T[] }> {
+export async function fetchAll<T>(build: () => RangeQuery): Promise<{ data: T[] }> {
   const out: T[] = []
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await build().range(from, from + PAGE - 1)

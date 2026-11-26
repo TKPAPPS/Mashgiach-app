@@ -2,15 +2,78 @@
 import { useState, useEffect, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowRight, CheckCircle, AlertTriangle, Trash2 } from 'lucide-react'
+import { ArrowRight, CheckCircle, AlertTriangle, Trash2, Camera } from 'lucide-react'
 import PhotoAddControl from '@/components/ui/PhotoAddControl'
 import { toJpegFile } from '@/lib/utils/image'
 import type { ChecklistItem } from '@/lib/supabase/types'
 
-type VisitPhoto = { id: string; url: string | null }
+type VisitPhoto = { id: string; url: string | null; checklist_item_id?: string | null }
+const MAX_ITEM_PHOTOS = 3
 
-function PhotoUpload({ visitLogId }: { visitLogId: string }) {
-  const [photos, setPhotos] = useState<VisitPhoto[]>([])
+// Proof photo for one ticked checklist item: camera only (a live photo, not the
+// gallery), up to 3 per item, stored in visit_photos with checklist_item_id.
+function ItemProof({ visitLogId, itemId, itemName, photos, onChange }: {
+  visitLogId: string; itemId: string; itemName: string
+  photos: VisitPhoto[]; onChange: (next: VisitPhoto[]) => void
+}) {
+  const camRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState('')
+
+  async function handleFiles(files: FileList | null) {
+    if (!files || files.length === 0) return
+    setUploading(true); setError('')
+    let next = photos
+    for (const file of Array.from(files).slice(0, MAX_ITEM_PHOTOS - photos.length)) {
+      const fd = new FormData()
+      fd.append('visit_log_id', visitLogId)
+      fd.append('checklist_item_id', itemId)
+      fd.append('file', await toJpegFile(file))
+      const res = await fetch('/api/inspector/visit-photos', { method: 'POST', body: fd })
+      const j = await res.json().catch(() => ({}))
+      if (res.ok) { next = [...next, j as VisitPhoto]; onChange(next) }
+      else { setError(j.message ?? 'העלאת התמונה נכשלה'); break }
+    }
+    setUploading(false)
+  }
+
+  async function remove(id: string) {
+    const res = await fetch(`/api/inspector/visit-photos?id=${id}`, { method: 'DELETE' })
+    if (res.ok) onChange(photos.filter(p => p.id !== id))
+  }
+
+  return (
+    <div style={{ marginRight: 26, display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        {photos.map(p => (
+          <div key={p.id} style={{ position: 'relative', width: 52, height: 52, borderRadius: 6, overflow: 'hidden', background: 'var(--border)' }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            {p.url && <img src={p.url} alt={`הוכחה: ${itemName}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+            <button type="button" onClick={() => remove(p.id)} aria-label="מחק תמונה"
+              style={{ position: 'absolute', top: 2, right: 2, background: 'rgba(0,0,0,.6)', border: 'none', borderRadius: 4, color: '#fff', width: 20, height: 20, display: 'grid', placeItems: 'center', cursor: 'pointer', padding: 0 }}>
+              <Trash2 size={11} />
+            </button>
+          </div>
+        ))}
+        {photos.length < MAX_ITEM_PHOTOS && (
+          <button type="button" className="button button--ghost button--sm" disabled={uploading}
+            onClick={() => camRef.current?.click()} aria-label={`צלם הוכחה: ${itemName}`}
+            style={{ gap: 6, height: photos.length ? 52 : undefined }}>
+            {uploading ? <span className="spinner" style={{ width: 14, height: 14 }} /> : <Camera size={14} />}
+            {uploading ? 'מעלה...' : photos.length ? 'עוד' : 'צלם הוכחה'}
+          </button>
+        )}
+        <input ref={camRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
+          data-testid={`proof-input-${itemId}`}
+          onChange={e => { handleFiles(e.target.files); e.target.value = '' }} />
+      </div>
+      {error && <span style={{ fontSize: '.78rem', color: 'var(--danger)' }}>{error}</span>}
+    </div>
+  )
+}
+
+function PhotoUpload({ visitLogId, initial }: { visitLogId: string; initial: VisitPhoto[] }) {
+  const [photos, setPhotos] = useState<VisitPhoto[]>(initial)
   const [uploading, setUploading] = useState(false)
 
   async function handleFiles(files: FileList | null) {
@@ -88,6 +151,8 @@ function ChecklistInner() {
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [notes, setNotes] = useState<Record<string, string>>({})
   const [errorMsg, setErrorMsg] = useState('')
+  const [itemPhotos, setItemPhotos] = useState<Record<string, VisitPhoto[]>>({})
+  const [generalPhotos, setGeneralPhotos] = useState<VisitPhoto[] | null>(null)
 
   useEffect(() => {
     if (!hasParams) return
@@ -108,7 +173,16 @@ function ChecklistInner() {
           .order('sort_order')
         result = (globals ?? []) as ChecklistItem[]
       }
+      // Photos already taken for this visit (e.g. after a reload).
+      const existing: VisitPhoto[] = await fetch(`/api/inspector/visit-photos?visit_log_id=${visitLogId}`)
+        .then(r => r.ok ? r.json() : []).catch(() => [])
       if (cancelled) return
+      const byItem: Record<string, VisitPhoto[]> = {}
+      for (const p of existing) if (p.checklist_item_id) (byItem[p.checklist_item_id] ??= []).push(p)
+      setItemPhotos(byItem)
+      setGeneralPhotos(existing.filter(p => !p.checklist_item_id))
+      // An item with a proof photo was ticked before the reload.
+      setChecked(new Set(Object.keys(byItem)))
       setItems(result)
       setPhase('form')
     })()
@@ -165,6 +239,11 @@ function ChecklistInner() {
               background: '#fff',
             }}
           />
+        )}
+        {(isChecked || (itemPhotos[item.id]?.length ?? 0) > 0) && visitLogId && (
+          <ItemProof visitLogId={visitLogId} itemId={item.id} itemName={item.name}
+            photos={itemPhotos[item.id] ?? []}
+            onChange={next => setItemPhotos(prev => ({ ...prev, [item.id]: next }))} />
         )}
       </div>
     )
@@ -334,8 +413,8 @@ function ChecklistInner() {
         )}
 
         {/* Photo upload */}
-        {(phase === 'form' || phase === 'confirm-empty' || phase === 'confirm-skip') && visitLogId && (
-          <PhotoUpload visitLogId={visitLogId} />
+        {(phase === 'form' || phase === 'confirm-empty' || phase === 'confirm-skip') && visitLogId && generalPhotos && (
+          <PhotoUpload visitLogId={visitLogId} initial={generalPhotos} />
         )}
 
         {/* Actions */}

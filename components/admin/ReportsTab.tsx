@@ -1,81 +1,20 @@
 'use client'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Download, Camera, X } from 'lucide-react'
+import { Download, Camera } from 'lucide-react'
 import { formatDateTime, actionLabel, statusLabel, formatDistance } from '@/lib/utils/format'
 import { exportToExcel } from '@/lib/utils/excel'
 import type { VisitLog } from '@/lib/supabase/types'
 import type { SharedInspector, SharedLocation } from './AdminShell'
 import { visitCells, bangkokDateOf, bangkokRange, PAIRING_MARGIN_MS, type VisitCell } from '@/lib/utils/visits'
 import VisitTimeCell from './VisitTimeCell'
+import VisitPhotosModal from './VisitPhotosModal'
 
 function thirtyDaysAgo() {
   return bangkokDateOf(new Date(Date.now() - 30 * 24 * 3600_000).toISOString())
 }
 
 const DEFAULT_FROM = thirtyDaysAgo()
-
-type VisitPhoto = { id: string; url: string | null; created_at: string }
-
-function PhotoViewerModal({ visitLogId, onClose }: { visitLogId: string; onClose: () => void }) {
-  const [photos, setPhotos] = useState<VisitPhoto[]>([])
-  const [loading, setLoading] = useState(true)
-  const [lightbox, setLightbox] = useState<string | null>(null)
-
-  useEffect(() => {
-    fetch(`/api/admin/visit-photos?visit_log_id=${visitLogId}`)
-      .then(r => r.json())
-      .then(data => { setPhotos(Array.isArray(data) ? data : []); setLoading(false) })
-  }, [visitLogId])
-
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 1000,
-      background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-    }} onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div style={{
-        background: '#fff', borderRadius: 12, width: '100%', maxWidth: 560,
-        margin: '0 16px', padding: '20px 16px 24px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', gap: 16,
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <strong>תמונות לביקור</strong>
-          <button className="button button--icon button--ghost" onClick={onClose}><X size={18} /></button>
-        </div>
-
-        {loading ? (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: 32 }}><span className="spinner" /></div>
-        ) : photos.length === 0 ? (
-          <p style={{ color: 'var(--muted)', textAlign: 'center', padding: '16px 0' }}>אין תמונות לביקור זה.</p>
-        ) : (
-          <div style={{ overflowY: 'auto' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
-              {photos.map(p => p.url && (
-                <div key={p.id} style={{ aspectRatio: '1', borderRadius: 8, overflow: 'hidden', background: 'var(--border)', cursor: 'pointer' }}
-                  onClick={() => setLightbox(p.url)}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={p.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {lightbox && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 1100,
-          background: 'rgba(0,0,0,.92)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }} onClick={() => setLightbox(null)}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={lightbox} alt="" style={{ maxWidth: '95vw', maxHeight: '90vh', borderRadius: 8, objectFit: 'contain' }} />
-          <button style={{ position: 'absolute', top: 16, right: 16, background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}>
-            <X size={28} />
-          </button>
-        </div>
-      )}
-    </div>
-  )
-}
 
 type Props = {
   refreshKey: number
@@ -288,7 +227,7 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
       </div>
 
       {photoModalId && (
-        <PhotoViewerModal visitLogId={photoModalId} onClose={() => setPhotoModalId(null)} />
+        <VisitPhotosModal visitLogId={photoModalId} onClose={() => setPhotoModalId(null)} />
       )}
     </div>
   )

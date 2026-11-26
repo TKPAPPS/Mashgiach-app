@@ -87,6 +87,8 @@ export type VisitLog = {
   distance_meters: number | null
   internal_status: VisitStatus
   gps_check?: GpsCheck | null
+  /** When the forgot-exit push went out for this entry (cron). */
+  reminder_sent_at?: string | null
   qr_code_scanned: string | null
   created_at: string
   inspector?: Pick<Profile, 'id' | 'full_name'>
@@ -181,6 +183,8 @@ export type VisitPhoto = {
   inspector_id: string
   location_id: string | null
   photo_path: string
+  /** Set when the photo proves one checklist item; null = general visit photo. */
+  checklist_item_id: string | null
   created_at: string
 }
 
@@ -295,6 +299,8 @@ export type ReportSettings = {
   monthly_sections: ReportSection[]
   monthly_last_sent_month: string | null   // 'YYYY-MM', Asia/Bangkok
   gps_enforcement?: GpsEnforcement
+  /** Push the inspector this many minutes after an entry with no exit; 0 = off. */
+  forgot_exit_minutes?: number
   updated_at: string
 }
 
@@ -325,7 +331,7 @@ export type Database = {
       admin_location_reports:    TableDef<AdminLocationReport, Omit<AdminLocationReport,'id'|'created_at'|'updated_at'|'location'|'admin'>, Partial<Omit<AdminLocationReport,'location'|'admin'>>>
       admin_report_attachments:  TableDef<AdminReportAttachment, Omit<AdminReportAttachment,'id'|'created_at'>, Partial<AdminReportAttachment>>
       admin_report_followups:    TableDef<AdminReportFollowup, Omit<AdminReportFollowup,'id'|'created_at'>, Partial<AdminReportFollowup>>
-      push_subscriptions:        TableDef<{ id: string; user_id: string; endpoint: string; p256dh: string; auth: string; created_at: string }, { user_id: string; endpoint: string; p256dh: string; auth: string }, { user_id?: string; endpoint?: string; p256dh?: string; auth?: string }>
+      push_subscriptions:        TableDef<{ id: string; user_id: string; endpoint: string; p256dh: string; auth: string; subscription: unknown; created_at: string }, { user_id: string; endpoint: string; p256dh: string; auth: string; subscription: unknown }, { user_id?: string; endpoint?: string; p256dh?: string; auth?: string; subscription?: unknown }>
       documents:                 TableDef<Document, Omit<Document,'id'|'created_at'>, Partial<Document>>
       procedure_photos:          TableDef<ProcedurePhoto, Omit<ProcedurePhoto,'id'|'created_at'>, Partial<ProcedurePhoto>>
       procedure_checks:          TableDef<ProcedureCheck, Omit<ProcedureCheck,'id'|'created_at'>, Partial<ProcedureCheck>>
