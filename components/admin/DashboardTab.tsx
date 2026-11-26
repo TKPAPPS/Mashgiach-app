@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/client'
 import {
   CircleCheck, Users, CalendarDays, AlertTriangle, ListChecks, ChevronDown, ChevronUp
 } from 'lucide-react'
-import { formatDateTime, statusLabel, actionLabel } from '@/lib/utils/format'
+import { formatDateTime, statusLabel, actionLabel, gpsAlertLabel, formatDistance } from '@/lib/utils/format'
 import { visitCells, PAIRING_MARGIN_MS, bangkokDateOf, bangkokRange } from '@/lib/utils/visits'
 import VisitTimeCell from './VisitTimeCell'
 import type { VisitLog, GpsAlert, VisitCheck } from '@/lib/supabase/types'
@@ -194,7 +194,7 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
                 <AlertTriangle size={16} /> {alertsTotal} חריגות GPS לא מטופלות
               </div>
               <p style={{ fontSize: '.78rem', color: 'var(--muted)', margin: 0 }}>
-                סריקה ממרחק העולה על 100 מטר מהמקום, או סריקה שנחסמה בגלל מיקום חסר. סמן כנקרא לאחר בדיקה.
+                סריקה רחוקה מהמסעדה, סריקה שנחסמה בגלל מיקום, או נסיעה בלתי אפשרית בין שתי סריקות. סמן כנקרא לאחר בדיקה.
               </p>
             </div>
             <button
@@ -206,7 +206,7 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
           </div>
           <div className="tableWrap">
             <table>
-              <thead><tr><th>זמן</th><th>משגיח</th><th>מקום</th><th>פעולה</th><th>מרחק מהמקום</th><th>מיקום</th><th></th></tr></thead>
+              <thead><tr><th>זמן</th><th>משגיח</th><th>מקום</th><th>פעולה</th><th>חריגה</th><th>מיקום</th><th></th></tr></thead>
               <tbody>
                 {alerts.map(a => (
                   <tr key={a.id}>
@@ -216,10 +216,7 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
                     <td>{actionLabel(a.action_type ?? '')}</td>
                     <td>
                       <span style={{ fontWeight: 600, color: 'var(--warning)' }}>
-                        {a.alert_type === 'no_gps' ? 'ללא מיקום (נחסם)'
-                          : a.alert_type === 'low_accuracy' ? `מיקום לא מדויק (נחסם)${a.distance_meters != null ? `, ${a.distance_meters} מ׳` : ''}`
-                          : a.alert_type === 'location_no_coords' ? 'למסעדה אין מיקום (נחסם)'
-                          : a.distance_meters ? `${a.distance_meters} מ׳` : '-'}
+                        {gpsAlertLabel(a.alert_type, a.distance_meters)}
                       </span>
                     </td>
                     <td>
@@ -434,7 +431,7 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
                               </a>
                             : <span className="mutedCell">-</span>}
                         </td>
-                        <td>{log.distance_meters != null ? `${log.distance_meters} מ׳` : <span className="mutedCell">-</span>}</td>
+                        <td className="noWrap">{log.distance_meters != null ? formatDistance(log.distance_meters) : <span className="mutedCell">-</span>}</td>
                       </tr>
                       {isExit && isOpen && (
                         <tr>

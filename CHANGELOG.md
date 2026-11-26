@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-11-26: Impossible-travel alerts, GPS in the email reports, monthly report fixed
+
+From the manager's fix list (points 6 and 4), plus a bug found while testing.
+
+- **Impossible travel** (`impossibleTravel()` in `lib/utils/gps.ts`): on every scan with a location, the
+  route compares it with the same inspector's previous scan that had a location (any restaurant, last
+  24 h). More than 5 km at more than 150 km/h creates a `gps_alerts` row with `alert_type =
+  'impossible_travel'` (distance = the jump) and a push to admins. The scan itself still follows the
+  normal GPS rules. On all history up to this date the rule matches no current inspector, so it is quiet
+  by design.
+- Findings while sizing it: the 9,131 km alerts were scans at Phuket while the restaurant (קריספי) had
+  wrong coordinates, since corrected, not travel. 4,454 old scans have `inspector_id` null (deleted
+  accounts); `pairVisits()` now skips them so different people never pair.
+- **GPS in the email**: new report section `gps_alerts` (checkbox "חריגות מיקום (GPS)" for the daily,
+  "סיכום חריגות מיקום (GPS) לפי משגיח" for the monthly; off until the manager ticks it). Per inspector:
+  scans without location, far scans, blocked scans, impossible travel; the daily also lists each alert
+  (first 50).
+- **Monthly report was cut off** (bug since launch): PostgREST returns at most 1000 rows and every month
+  has 1,600 to 3,000 scans, so each monthly email covered only the start of the month (July to 10/07,
+  August to 13/08, September to 17/09, October to 14/10). All report queries now page through with
+  `fetchAll()` (ordered by `created_at, id`). Verified: October counts all 1,161 entries.
+- Shared `formatDistance()` and `gpsAlertLabel()` in `lib/utils/format.ts`; distances over 1 km show in km.
+
 ## 2026-11-26: Visit time you can trust, real GPS alert count
 
 From the manager's fix list (points 2 and 8).

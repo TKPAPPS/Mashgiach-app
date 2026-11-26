@@ -298,6 +298,13 @@ All visit time comes from `pairVisits()` in `lib/utils/visits.ts`; never write a
 
 ## GPS alert lifecycle
 
+`gps_alerts.alert_type`: `gps_mismatch` (far scan), `no_gps` / `low_accuracy` / `location_no_coords` (blocked scans), `impossible_travel` (two scans by one inspector more than 5 km apart at over 150 km/h within 24 h, checked in the scan route). Labels come from `gpsAlertLabel()` in `lib/utils/format.ts`. The email section `gps_alerts` summarises them per inspector.
+
+## Email report queries: always page
+
+PostgREST caps a request at 1000 rows and a month has 1,600 to 3,000 scans. Every report query in `lib/utils/dailyReport.ts` goes through `fetchAll()` with a stable order (`created_at`, then `id`). Never add a report query without it.
+
+
 Dashboard alerts appear when an inspector scans from >100m, or (block mode) when a scan is rejected for GPS; `gps_alerts.alert_type` says which. The banner shows the real unread count (head count query) and pages the list (20, then +100). Individual dismiss ("סמן כנקרא") or bulk dismiss, which asks for confirmation and marks every unread alert via `PATCH /api/admin/gps-alerts`. `gps_alerts` joins `visit_logs` to expose `device_lat`/`device_lng` for a Google Maps link in the alerts table. Only `read` flag changes; rows are permanent.
 
 ## Replacement inspector selection

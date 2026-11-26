@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, ReportSection, VisitLog, VisitCheck, DeficiencyReport } from '@/lib/supabase/types'
 import { pairVisits, PAIRING_MARGIN_MS } from '@/lib/utils/visits'
+import { gpsAlertLabel } from '@/lib/utils/format'
 
 type Service = SupabaseClient<Database>
 
@@ -53,6 +54,97 @@ function addVisitMinutes(
     const e = p.entry
     ensureLoc(e.inspector_id, e.inspector?.full_name ?? 'לא ידוע', e.location_id!, e.location?.name ?? 'לא ידוע').minutes += p.minutes ?? 0
   }
+}
+
+// PostgREST returns at most 1000 rows per request. A month has 1,600 to 3,000
+// scans, so every report query pages through with range() (before 26/11/2026 the
+// monthly report silently covered only the first 1000 rows of the month).
+const PAGE = 1000
+type RangeQuery = { range: (from: number, to: number) => PromiseLike<{ data: unknown[] | null; error: unknown }> }
+async function fetchAll<T>(build: () => RangeQuery): Promise<{ data: T[] }> {
+  const out: T[] = []
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await build().range(from, from + PAGE - 1)
+    if (error) { console.error('report query failed', error); break }
+    out.push(...((data ?? []) as T[]))
+    if (!data || data.length < PAGE) break
+  }
+  return { data: out }
+}
+
+type Styles = { table: string; th: string; td: string; h2: string; muted: string }
+type AlertRow = { created_at: string; alert_type: string | null; distance_meters: number | null; inspector_id: string | null; inspector?: { full_name?: string } | null; location?: { name?: string } | null }
+
+// GPS section: per inspector, scans without a location, far scans, blocked scans and
+// impossible-travel alerts in the window; the daily report also lists each alert.
+async function gpsSection(
+  service: Service, startIso: string, endIso: string, logs: VisitLog[], styles: Styles, detail: boolean,
+): Promise<{ html: string; alertCount: number }> {
+  const { data } = await fetchAll<AlertRow>(() => service.from('gps_alerts')
+    .select('created_at,alert_type,distance_meters,inspector_id,inspector:profiles(full_name),location:locations(name)')
+    .gte('created_at', startIso).lt('created_at', endIso)
+    .order('created_at', { ascending: true }).order('id', { ascending: true }))
+  const alerts = (data ?? []) as AlertRow[]
+
+  type Agg = { name: string; noGps: number; far: number; blocked: number; travel: number }
+  const per = new Map<string, Agg>()
+  const get = (id: string, name: string) => {
+    let a = per.get(id)
+    if (!a) { a = { name, noGps: 0, far: 0, blocked: 0, travel: 0 }; per.set(id, a) }
+    return a
+  }
+  for (const l of logs) {
+    if (!l.inspector_id) continue
+    const name = l.inspector?.full_name ?? 'לא ידוע'
+    if (l.gps_check === 'no_gps') get(l.inspector_id, name).noGps++
+    if (l.gps_check === 'too_far') get(l.inspector_id, name).far++
+    if (l.internal_status === 'gps_rejected') get(l.inspector_id, name).blocked++
+  }
+  for (const a of alerts) {
+    if (a.alert_type === 'impossible_travel' && a.inspector_id) get(a.inspector_id, a.inspector?.full_name ?? 'לא ידוע').travel++
+  }
+
+  const out: string[] = [`<h2 style="${styles.h2}">חריגות מיקום (GPS)</h2>`]
+  const rows = [...per.values()].filter(a => a.noGps + a.far + a.blocked + a.travel > 0)
+    .sort((a, b) => (b.noGps + b.far + b.blocked + b.travel) - (a.noGps + a.far + a.blocked + a.travel))
+  if (rows.length === 0) {
+    out.push(`<p style="${styles.muted}">לא נרשמו חריגות מיקום.</p>`)
+    return { html: out.join('\n'), alertCount: alerts.length }
+  }
+  out.push(`<table dir="rtl" style="${styles.table}">
+    <thead><tr>
+      <th style="${styles.th}">משגיח</th>
+      <th style="${styles.th}">סריקות ללא מיקום</th>
+      <th style="${styles.th}">סריקות רחוקות (מעל 100 מ׳)</th>
+      <th style="${styles.th}">סריקות שנחסמו</th>
+      <th style="${styles.th}">נסיעה בלתי אפשרית</th>
+    </tr></thead>
+    <tbody>${rows.map(a => `
+      <tr>
+        <td style="${styles.td}">${esc(a.name)}</td>
+        <td style="${styles.td}">${a.noGps}</td>
+        <td style="${styles.td}">${a.far}</td>
+        <td style="${styles.td}">${a.blocked}</td>
+        <td style="${styles.td}${a.travel ? ';color:#b91c1c;font-weight:700;' : ''}">${a.travel}</td>
+      </tr>`).join('')}
+    </tbody></table>`)
+  if (detail && alerts.length > 0) {
+    const MAX = 50
+    out.push(`<table dir="rtl" style="${styles.table}">
+      <thead><tr>
+        <th style="${styles.th}">שעה</th><th style="${styles.th}">משגיח</th><th style="${styles.th}">מסעדה</th><th style="${styles.th}">חריגה</th>
+      </tr></thead>
+      <tbody>${alerts.slice(0, MAX).map(a => `
+        <tr>
+          <td style="${styles.td}">${fmtTime(a.created_at)}</td>
+          <td style="${styles.td}">${esc(a.inspector?.full_name ?? 'לא ידוע')}</td>
+          <td style="${styles.td}">${esc(a.location?.name ?? 'לא ידוע')}</td>
+          <td style="${styles.td}">${esc(gpsAlertLabel(a.alert_type, a.distance_meters))}</td>
+        </tr>`).join('')}
+      </tbody></table>`)
+    if (alerts.length > MAX) out.push(`<p style="${styles.muted}">ועוד ${alerts.length - MAX} חריגות. הרשימה המלאה בלוח הבקרה.</p>`)
+  }
+  return { html: out.join('\n'), alertCount: alerts.length }
 }
 
 function bangkokDayWindow(dateStr: string): { startIso: string; endIso: string } {
@@ -126,18 +218,18 @@ export async function buildDailyReport(
   const { startIso, endIso } = bangkokDayWindow(dateStr)
 
   const [{ data: logsData }, { data: checksData }, { data: defsData }] = await Promise.all([
-    service.from('visit_logs')
-      .select('id,action_type,location_id,inspector_id,created_at,internal_status,inspector:profiles(id,full_name),location:locations(id,name,city)')
+    fetchAll<VisitLog>(() => service.from('visit_logs')
+      .select('id,action_type,location_id,inspector_id,created_at,internal_status,gps_check,inspector:profiles(id,full_name),location:locations(id,name,city)')
       .gte('created_at', shiftIso(startIso, -PAIRING_MARGIN_MS)).lt('created_at', shiftIso(endIso, PAIRING_MARGIN_MS))
-      .order('created_at', { ascending: true }),
-    service.from('visit_checks')
+      .order('created_at', { ascending: true }).order('id', { ascending: true })),
+    fetchAll<VisitCheck>(() => service.from('visit_checks')
       .select('id,visit_log_id,item_name,note,created_at,inspector:profiles(id,full_name),location:locations(id,name)')
       .gte('created_at', startIso).lt('created_at', endIso)
-      .order('created_at', { ascending: true }),
-    service.from('deficiency_reports')
+      .order('created_at', { ascending: true }).order('id', { ascending: true })),
+    fetchAll<DeficiencyReport>(() => service.from('deficiency_reports')
       .select('id,report_type,description,created_at,inspector:profiles(id,full_name),location:locations(id,name,city)')
       .gte('created_at', startIso).lt('created_at', endIso)
-      .order('created_at', { ascending: true }),
+      .order('created_at', { ascending: true }).order('id', { ascending: true })),
   ])
 
   // Fetched with a margin either side so visits crossing midnight pair up;
@@ -275,13 +367,20 @@ export async function buildDailyReport(
     }
   }
 
+  let gpsAlertCount = 0
+  if (sections.includes('gps_alerts')) {
+    const g = await gpsSection(service, startIso, endIso, logs, styles, true)
+    parts.push(g.html)
+    gpsAlertCount = g.alertCount
+  }
+
   const subject = `דוח יומי - ${fmtHebrewDate(dateStr)}`
   const html = `<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8"></head>
 <body dir="rtl" style="margin:0;background:#f8fafc;font-family:Arial,Helvetica,sans-serif;color:#0f172a;direction:rtl;">
   <div dir="rtl" style="max-width:760px;margin:0 auto;padding:24px;direction:rtl;text-align:right;">
     <h1 style="font-size:20px;margin:0 0 2px;text-align:right;direction:rtl;">דוח פעילות יומי</h1>
     <p style="${styles.muted};margin:0 0 14px;">${fmtHebrewDate(dateStr)} (שעון בנגקוק)</p>
-    ${hasActivity ? parts.join('\n') : `<p style="${styles.muted}">לא נרשמה פעילות ביום זה.</p>`}
+    ${hasActivity || gpsAlertCount > 0 ? parts.join('\n') : `<p style="${styles.muted}">לא נרשמה פעילות ביום זה.</p>`}
     <p style="${styles.muted};margin-top:24px;border-top:1px solid #e2e8f0;padding-top:12px;">הופק אוטומטית על ידי מערכת Mashgiach.</p>
   </div>
 </body></html>`
@@ -307,21 +406,21 @@ export async function buildMonthlyReport(
   const wantDefs = sections.includes('deficiencies')
 
   const [{ data: logsData }, { data: checksData }, { data: defsData }] = await Promise.all([
-    service.from('visit_logs')
-      .select('id,action_type,location_id,inspector_id,created_at,internal_status,inspector:profiles(id,full_name),location:locations(id,name,city)')
+    fetchAll<VisitLog>(() => service.from('visit_logs')
+      .select('id,action_type,location_id,inspector_id,created_at,internal_status,gps_check,inspector:profiles(id,full_name),location:locations(id,name,city)')
       .gte('created_at', shiftIso(startIso, -PAIRING_MARGIN_MS)).lt('created_at', shiftIso(endIso, PAIRING_MARGIN_MS))
-      .order('created_at', { ascending: true }),
+      .order('created_at', { ascending: true }).order('id', { ascending: true })),
     wantChecks
-      ? service.from('visit_checks')
+      ? fetchAll<VisitCheck>(() => service.from('visit_checks')
           .select('id,visit_log_id,item_name,note,created_at,location:locations(id,name)')
           .gte('created_at', startIso).lt('created_at', endIso)
-          .order('created_at', { ascending: true })
+          .order('created_at', { ascending: true }).order('id', { ascending: true }))
       : Promise.resolve({ data: [] as VisitCheck[] }),
     wantDefs
-      ? service.from('deficiency_reports')
+      ? fetchAll<DeficiencyReport>(() => service.from('deficiency_reports')
           .select('id,report_type,description,created_at,location_id,inspector:profiles(id,full_name),location:locations(id,name,city)')
           .gte('created_at', startIso).lt('created_at', endIso)
-          .order('created_at', { ascending: true })
+          .order('created_at', { ascending: true }).order('id', { ascending: true }))
       : Promise.resolve({ data: [] as DeficiencyReport[] }),
   ])
 
@@ -474,13 +573,20 @@ export async function buildMonthlyReport(
     }
   }
 
+  let gpsAlertCount = 0
+  if (sections.includes('gps_alerts')) {
+    const g = await gpsSection(service, startIso, endIso, logs, styles, false)
+    parts.push(g.html)
+    gpsAlertCount = g.alertCount
+  }
+
   const subject = `דוח חודשי - ${label}`
   const html = `<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8"></head>
 <body dir="rtl" style="margin:0;background:#f8fafc;font-family:Arial,Helvetica,sans-serif;color:#0f172a;direction:rtl;">
   <div dir="rtl" style="max-width:760px;margin:0 auto;padding:24px;direction:rtl;text-align:right;">
     <h1 style="font-size:20px;margin:0 0 2px;text-align:right;direction:rtl;">דוח פעילות חודשי</h1>
     <p style="${styles.muted};margin:0 0 14px;">${esc(label)} (שעון בנגקוק)</p>
-    ${hasActivity ? parts.join('\n') : `<p style="${styles.muted}">לא נרשמה פעילות בחודש זה.</p>`}
+    ${hasActivity || gpsAlertCount > 0 ? parts.join('\n') : `<p style="${styles.muted}">לא נרשמה פעילות בחודש זה.</p>`}
     <p style="${styles.muted};margin-top:24px;border-top:1px solid #e2e8f0;padding-top:12px;">הופק אוטומטית על ידי מערכת Mashgiach.</p>
   </div>
 </body></html>`

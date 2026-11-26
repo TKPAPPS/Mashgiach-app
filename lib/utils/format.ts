@@ -65,3 +65,22 @@ export function genQrCode() {
   const rand = (n: number) => Math.floor(Math.random() * n)
   return `LOC-${Array.from({length:4}, ()=>chars[rand(chars.length)]).join('')}-${Array.from({length:4}, ()=>chars[rand(chars.length)]).join('')}`
 }
+
+/** Distance for display: metres under 1 km, else km with one decimal under 100 km. */
+export function formatDistance(m: number | null | undefined): string {
+  if (m == null) return '-'
+  if (m < 1000) return `${m} מ׳`
+  const km = m / 1000
+  return `${km < 100 ? km.toFixed(1) : Math.round(km).toLocaleString('he-IL')} ק״מ`
+}
+
+/** What a GPS alert means, for the dashboard and the email report. */
+export function gpsAlertLabel(type: string | null | undefined, distance: number | null | undefined): string {
+  switch (type) {
+    case 'no_gps': return 'ללא מיקום (נחסם)'
+    case 'low_accuracy': return `מיקום לא מדויק (נחסם)${distance != null ? `, ${formatDistance(distance)}` : ''}`
+    case 'location_no_coords': return 'למסעדה אין מיקום (נחסם)'
+    case 'impossible_travel': return `נסיעה בלתי אפשרית: ${formatDistance(distance)} מהסריקה הקודמת`
+    default: return `סריקה רחוקה: ${formatDistance(distance)}`
+  }
+}

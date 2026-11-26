@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Download, Camera, X } from 'lucide-react'
-import { formatDateTime, actionLabel, statusLabel } from '@/lib/utils/format'
+import { formatDateTime, actionLabel, statusLabel, formatDistance } from '@/lib/utils/format'
 import { exportToExcel } from '@/lib/utils/excel'
 import type { VisitLog } from '@/lib/supabase/types'
 import type { SharedInspector, SharedLocation } from './AdminShell'
@@ -250,7 +250,7 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
                       <td>{loc?.city ?? <span className="mutedCell">-</span>}</td>
                       <td><span className={`badge ${cls}`}>{label}</span></td>
                       <td className="noWrap"><VisitTimeCell cell={timeSpent[log.id]} /></td>
-                      <td>{log.distance_meters != null ? `${log.distance_meters} מ׳` : <span className="mutedCell">-</span>}</td>
+                      <td className="noWrap">{log.distance_meters != null ? formatDistance(log.distance_meters) : <span className="mutedCell">-</span>}</td>
                       <td>
                         {log.device_lat && log.device_lng
                           ? <a className="coordsLink"
