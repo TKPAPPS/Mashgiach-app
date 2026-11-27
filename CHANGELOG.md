@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-27: "נסה שוב" on the scan screen restarts the camera
+
+- Bug since 26/11: after a refused scan (block mode: no location, too far), "נסה שוב" cleared the
+  message but never restarted the camera (navigating to the same URL does not remount the page), so
+  the inspector saw an empty screen and had to go back and tap scan again. The button now bumps an
+  `attempt` counter that re-runs the scanner effect. Found by the rebuilt scan-screen test
+  (fake camera, real decoding), which now passes 13/13; the rebuilt GPS-alerts paging test passes 12/12.
+
 ## 2026-11-27: Auto-close, required proof photo, certificate expiry
 
 From the manager's follow-up list of 27/11 (points 2ג, 2ד, 2ה, 2ז).
