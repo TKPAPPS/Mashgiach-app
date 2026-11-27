@@ -48,7 +48,7 @@ export default function CertificatesDueCard({ refreshKey }: { refreshKey?: numbe
             </ul>}
         {noDate > 0 && (
           <p style={{ margin: 0, fontSize: '.82rem', color: 'var(--warning)' }}>
-            <strong>{noDate}</strong> תעודות עדיין בלי תאריך תפוגה, ולכן לא תצא עליהן התראה. מזינים ב: מקומות &gt; פרטים מלאים &gt; תעודת כשרות.
+            <strong>{noDate}</strong>{' '}תעודות עדיין בלי תאריך תפוגה, ולכן לא תצא עליהן התראה. מזינים ב: מקומות &gt; פרטים מלאים &gt; תעודת כשרות.
           </p>
         )}
       </div>
