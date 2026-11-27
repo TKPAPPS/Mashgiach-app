@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, FormEvent } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Plus, Pen, Trash2, QrCode, MapPin, Eye, ArrowUp, ArrowDown, ArrowUpDown, Search } from 'lucide-react'
+import { certStatus, certBadgeClass } from '@/lib/utils/certExpiry'
 import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import { genQrCode, KASHRUT_TYPE_LABELS } from '@/lib/utils/format'
@@ -224,7 +225,7 @@ export default function LocationsTab({ refreshKey }: Props) {
   async function load() {
     setLoading(true)
     const [{ data }, { data: cityRows }] = await Promise.all([
-      supabase.from('locations').select('id,name,city,city_id,kashrut_type,address,qr_code,lat,lng,status').order('name'),
+      supabase.from('locations').select('id,name,city,city_id,kashrut_type,address,qr_code,lat,lng,status,kashrus_certificate_expires_on').order('name'),
       supabase.from('cities').select('id,name_he').eq('active', true).order('name_he'),
     ])
     setLocations((data ?? []) as Location[])
@@ -387,6 +388,7 @@ export default function LocationsTab({ refreshKey }: Props) {
                         <div className="adminSection__locName">
                           <MapPin size={14} style={{ color: 'var(--primary)', flexShrink: 0 }} aria-hidden />
                           {loc.name}
+                          <CertFlag date={loc.kashrus_certificate_expires_on} active={loc.status === 'active'} />
                         </div>
                       </td>
                       <td>{loc.city ?? <span className="mutedCell">-</span>}</td>
@@ -535,5 +537,16 @@ export default function LocationsTab({ refreshKey }: Props) {
         </div>}
       </Modal>
     </div>
+  )
+}
+
+// Next to the restaurant name: the certificate expires within 30 days, or has expired.
+function CertFlag({ date, active }: { date?: string | null; active: boolean }) {
+  const st = active ? certStatus(date) : null
+  if (!st || st.kind === 'ok') return null
+  return (
+    <span className={`badge ${certBadgeClass(st.kind)}`} style={{ fontSize: '.68rem', marginInlineStart: 6 }} title={`תעודת כשרות: ${st.text}`} data-testid="cert-flag">
+      {st.kind === 'expired' ? 'תעודה פגה' : `תעודה: ${st.text}`}
+    </span>
   )
 }

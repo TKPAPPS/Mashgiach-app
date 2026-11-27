@@ -10,7 +10,8 @@ import PushCard from '@/components/inspector/PushCard'
 import PushPrompt from '@/components/inspector/PushPrompt'
 import { toJpegFile } from '@/lib/utils/image'
 import type { Location, Profile, VisitLog } from '@/lib/supabase/types'
-import { MAX_VISIT_HOURS } from '@/lib/utils/gps'
+import { isInside } from '@/lib/utils/visits'
+import { certStatus, certBadgeClass } from '@/lib/utils/certExpiry'
 
 type LocationWithLastVisit = Location & { lastVisit?: VisitLog }
 type ReplacementInspector = { id: string; full_name: string }
@@ -39,8 +40,8 @@ export default function InspectorHome() {
 
     const [{ data: prof }, { data: il }, { data: recentVisits }] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', user.id).single(),
-      supabase.from('inspector_locations').select('location_id, location:locations(id,name,city,address,status)').eq('inspector_id', user.id),
-      supabase.from('visit_logs').select('id,action_type,location_id,created_at').eq('inspector_id', user.id).in('internal_status', ['success', 'gps_mismatch']).order('created_at', { ascending: false }).limit(50),
+      supabase.from('inspector_locations').select('location_id, location:locations(id,name,city,address,status,kashrus_certificate_expires_on)').eq('inspector_id', user.id),
+      supabase.from('visit_logs').select('id,action_type,location_id,created_at,auto_closed_at').eq('inspector_id', user.id).in('internal_status', ['success', 'gps_mismatch']).order('created_at', { ascending: false }).limit(50),
     ])
 
     setProfile(prof as Profile)
@@ -50,10 +51,10 @@ export default function InspectorHome() {
     for (const v of (recentVisits ?? []) as VisitLog[]) {
       if (v.location_id && !visitMap[v.location_id]) visitMap[v.location_id] = v
     }
-    // An entry older than MAX_VISIT_HOURS was never closed; the next scan opens a
-    // new visit (same rule as the scan route), so show the card as outside.
+    // An entry older than MAX_VISIT_HOURS, or closed automatically, was never
+    // closed by a scan; the next scan opens a new visit, so show it as outside.
     for (const [locId, v] of Object.entries(visitMap)) {
-      if (v.action_type === 'entry' && Date.now() - new Date(v.created_at).getTime() > MAX_VISIT_HOURS * 3600_000) delete visitMap[locId]
+      if (v.action_type === 'entry' && !isInside(v)) delete visitMap[locId]
     }
 
     setLocations(locs.map(l => ({ ...l, lastVisit: visitMap[l.id] })))
@@ -115,6 +116,12 @@ export default function InspectorHome() {
                     </div>
                     {loc.city && <div className="locationCard__city">{loc.city}</div>}
                     {loc.address && <div className="locationCard__address">{loc.address}</div>}
+                    {!isInactive && (() => {
+                      const st = certStatus(loc.kashrus_certificate_expires_on)
+                      return st && st.kind !== 'ok'
+                        ? <div style={{ marginTop: 4 }}><span className={`badge ${certBadgeClass(st.kind)}`} data-testid="home-cert-flag">תעודת כשרות: {st.text}</span></div>
+                        : null
+                    })()}
                     {!isInactive && loc.lastVisit && (
                       <div className="locationCard__lastVisit">
                         ביקור אחרון: {formatRelative(loc.lastVisit.created_at)} •{' '}

@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, ReportSection, VisitLog, VisitCheck, DeficiencyReport } from '@/lib/supabase/types'
 import { pairVisits, PAIRING_MARGIN_MS } from '@/lib/utils/visits'
 import { gpsAlertLabel } from '@/lib/utils/format'
+import { certStatus, fmtDay, CERT_WARN_DAYS, bangkokToday } from '@/lib/utils/certExpiry'
 
 type Service = SupabaseClient<Database>
 
@@ -147,6 +148,87 @@ async function gpsSection(
   return { html: out.join('\n'), alertCount: alerts.length }
 }
 
+// "ביקורים שלא נסגרו": visits whose ENTRY is in the window and that never got an
+// exit scan (closed automatically, never closed, or still open at send time),
+// plus how many correction requests are waiting for the manager.
+async function openVisitsSection(
+  service: Service, allLogs: VisitLog[], startIso: string, endIso: string, styles: Styles, detail: boolean,
+): Promise<{ html: string; count: number }> {
+  const pairs = pairVisits(allLogs).filter(p =>
+    p.entry && (p.state === 'no_exit' || p.state === 'open') &&
+    p.entry.created_at >= startIso && p.entry.created_at < endIso)
+  const { count: pending } = await service.from('scan_corrections').select('id', { count: 'exact', head: true }).eq('status', 'pending')
+  const out: string[] = [`<h2 style="${styles.h2}">ביקורים שלא נסגרו</h2>`]
+  const pendingLine = pending ? `<p style="${styles.muted}">בקשות תיקון סריקה שממתינות לאישור: <strong>${pending}</strong> (לשונית תיקוני סריקה).</p>` : ''
+  if (pairs.length === 0) {
+    out.push(`<p style="${styles.muted}">כל הביקורים נסגרו בסריקת יציאה.</p>`, pendingLine)
+    return { html: out.join('\n'), count: 0 }
+  }
+  const stateText = (p: (typeof pairs)[number]) => p.state === 'open' ? 'עדיין פתוח' : p.autoClosed ? 'נסגר אוטומטית' : 'לא נסגר'
+  if (detail) {
+    out.push(`<table dir="rtl" style="${styles.table}">
+      <thead><tr>
+        <th style="${styles.th}">כניסה</th><th style="${styles.th}">משגיח</th><th style="${styles.th}">מסעדה</th><th style="${styles.th}">מצב</th>
+      </tr></thead>
+      <tbody>${pairs.sort((a, b) => a.entry!.created_at.localeCompare(b.entry!.created_at)).map(p => `
+        <tr>
+          <td style="${styles.td}">${fmtTime(p.entry!.created_at)}</td>
+          <td style="${styles.td}">${esc(p.entry!.inspector?.full_name ?? 'לא ידוע')}</td>
+          <td style="${styles.td}">${esc(p.entry!.location?.name ?? 'לא ידוע')}</td>
+          <td style="${styles.td}">${stateText(p)}</td>
+        </tr>`).join('')}
+      </tbody></table>`)
+    out.push(`<p style="${styles.muted}">לביקור שלא נסגר לא נספר זמן. אם המשגיח היה במקום, הוא יכול לשלוח בקשת תיקון סריקה.</p>`)
+  } else {
+    // Monthly: count per inspector.
+    const per = new Map<string, { name: string; total: number; auto: number }>()
+    for (const p of pairs) {
+      const id = p.entry!.inspector_id
+      const a = per.get(id) ?? { name: p.entry!.inspector?.full_name ?? 'לא ידוע', total: 0, auto: 0 }
+      a.total++; if (p.autoClosed) a.auto++
+      per.set(id, a)
+    }
+    out.push(`<table dir="rtl" style="${styles.table}">
+      <thead><tr><th style="${styles.th}">משגיח</th><th style="${styles.th}">ביקורים שלא נסגרו</th><th style="${styles.th}">מתוכם נסגרו אוטומטית</th></tr></thead>
+      <tbody>${[...per.values()].sort((a, b) => b.total - a.total).map(a => `
+        <tr><td style="${styles.td}">${esc(a.name)}</td><td style="${styles.td}">${a.total}</td><td style="${styles.td}">${a.auto}</td></tr>`).join('')}
+      </tbody></table>`)
+  }
+  out.push(pendingLine)
+  return { html: out.join('\n'), count: pairs.length }
+}
+
+// "תעודות כשרות": certificates that expire within 30 days or have expired. The
+// full list on a day an alert went out (last 24 hours), one line otherwise.
+async function certificateSection(service: Service, styles: Styles, now: Date = new Date()): Promise<{ html: string; count: number }> {
+  const until = new Date(Date.parse(`${bangkokToday(now)}T00:00:00Z`) + CERT_WARN_DAYS * 86400_000).toISOString().slice(0, 10)
+  const [{ data: due }, { count: noDate }] = await Promise.all([
+    service.from('locations').select('id,name,kashrus_certificate_expires_on,certificate_alert_at')
+      .eq('status', 'active').not('kashrus_certificate_expires_on', 'is', null).lte('kashrus_certificate_expires_on', until)
+      .order('kashrus_certificate_expires_on'),
+    service.from('locations').select('id', { count: 'exact', head: true })
+      .eq('status', 'active').not('kashrus_certificate_url', 'is', null).is('kashrus_certificate_expires_on', null),
+  ])
+  const rows = (due ?? []) as { id: string; name: string; kashrus_certificate_expires_on: string; certificate_alert_at: string | null }[]
+  const out: string[] = [`<h2 style="${styles.h2}">תעודות כשרות</h2>`]
+  const since = now.getTime() - 24 * 3600_000
+  const fresh = rows.some(r => r.certificate_alert_at && Date.parse(r.certificate_alert_at) >= since)
+  if (rows.length === 0) out.push(`<p style="${styles.muted}">אין תעודה שפוקעת ב-30 הימים הקרובים.</p>`)
+  else if (!fresh) out.push(`<p style="${styles.muted}">${rows.length} תעודות פוקעות ב-30 הימים הקרובים או פגו. הרשימה בלוח הבקרה.</p>`)
+  else {
+    out.push(`<table dir="rtl" style="${styles.table}">
+      <thead><tr><th style="${styles.th}">מסעדה</th><th style="${styles.th}">בתוקף עד</th><th style="${styles.th}">מצב</th></tr></thead>
+      <tbody>${rows.map(r => {
+        const st = certStatus(r.kashrus_certificate_expires_on, now)!
+        const red = st.kind === 'expired' || st.kind === 'urgent'
+        return `<tr><td style="${styles.td}">${esc(r.name)}</td><td style="${styles.td}">${fmtDay(r.kashrus_certificate_expires_on)}</td><td style="${styles.td}${red ? ';color:#b91c1c;font-weight:700;' : ''}">${st.text}</td></tr>`
+      }).join('')}
+      </tbody></table>`)
+  }
+  if (noDate) out.push(`<p style="${styles.muted}">${noDate} תעודות עדיין בלי תאריך תפוגה, ולכן לא תצא עליהן התראה.</p>`)
+  return { html: out.join('\n'), count: rows.length }
+}
+
 function bangkokDayWindow(dateStr: string): { startIso: string; endIso: string } {
   // Bangkok is UTC+7 year round (no DST), so the offset is constant.
   const startMs = new Date(`${dateStr}T00:00:00+07:00`).getTime()
@@ -208,7 +290,7 @@ function esc(s: string): string {
 }
 
 type LocAgg = { locName: string; entries: number; exits: number; minutes: number }
-type VisitChecksAgg = { time: string; inspName: string; locName: string; items: { name: string; note: string | null }[] }
+type VisitChecksAgg = { time: string; inspName: string; locName: string; items: { name: string; note: string | null }[]; noPhotoReason?: string | null }
 
 export async function buildDailyReport(
   service: Service,
@@ -219,7 +301,7 @@ export async function buildDailyReport(
 
   const [{ data: logsData }, { data: checksData }, { data: defsData }] = await Promise.all([
     fetchAll<VisitLog>(() => service.from('visit_logs')
-      .select('id,action_type,location_id,inspector_id,created_at,internal_status,gps_check,inspector:profiles(id,full_name),location:locations(id,name,city)')
+      .select('id,action_type,location_id,inspector_id,created_at,internal_status,gps_check,auto_closed_at,manual_correction,proof_skip_reason,inspector:profiles(id,full_name),location:locations(id,name,city)')
       .gte('created_at', shiftIso(startIso, -PAIRING_MARGIN_MS)).lt('created_at', shiftIso(endIso, PAIRING_MARGIN_MS))
       .order('created_at', { ascending: true }).order('id', { ascending: true })),
     fetchAll<VisitCheck>(() => service.from('visit_checks')
@@ -263,7 +345,8 @@ export async function buildDailyReport(
   for (const c of checks) {
     let v = visitChecks.get(c.visit_log_id)
     if (!v) {
-      v = { time: c.created_at, inspName: c.inspector?.full_name ?? 'לא ידוע', locName: c.location?.name ?? 'לא ידוע', items: [] }
+      v = { time: c.created_at, inspName: c.inspector?.full_name ?? 'לא ידוע', locName: c.location?.name ?? 'לא ידוע', items: [],
+        noPhotoReason: allLogs.find(l => l.id === c.visit_log_id)?.proof_skip_reason ?? null }
       visitChecks.set(c.visit_log_id, v)
     }
     v.items.push({ name: c.item_name ?? '', note: c.note })
@@ -362,7 +445,8 @@ export async function buildDailyReport(
         parts.push(`<p dir="rtl" style="margin:14px 0 2px;font-weight:700;text-align:right;direction:rtl;">${esc(v.locName)} - ${esc(v.inspName)} <span style="${styles.muted}">(${fmtTime(v.time)})</span></p>
           <table dir="rtl" style="${styles.table}">
             <thead><tr><th style="${styles.th}">בדיקה</th><th style="${styles.th}">הערה</th></tr></thead>
-            <tbody>${items}</tbody></table>`)
+            <tbody>${items}</tbody></table>${v.noPhotoReason ? `
+          <p dir="rtl" style="margin:-10px 0 14px;color:#b45309;font-size:13px;text-align:right;direction:rtl;">ללא תמונת הוכחה. הסיבה שנכתבה: ${esc(v.noPhotoReason)}</p>` : ''}`)
       }
     }
   }
@@ -373,6 +457,21 @@ export async function buildDailyReport(
     parts.push(g.html)
     gpsAlertCount = g.alertCount
   }
+
+  let openCount = 0
+  if (sections.includes('open_visits')) {
+    const o = await openVisitsSection(service, allLogs, startIso, endIso, styles, true)
+    parts.push(o.html)
+    openCount = o.count
+  }
+
+  let certCount = 0
+  if (sections.includes('certificate_expiry')) {
+    const c = await certificateSection(service, styles)
+    parts.push(c.html)
+    certCount = c.count
+  }
+  gpsAlertCount += openCount + certCount // anything here is worth sending even on a quiet day
 
   const subject = `דוח יומי - ${fmtHebrewDate(dateStr)}`
   const html = `<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8"></head>
@@ -407,7 +506,7 @@ export async function buildMonthlyReport(
 
   const [{ data: logsData }, { data: checksData }, { data: defsData }] = await Promise.all([
     fetchAll<VisitLog>(() => service.from('visit_logs')
-      .select('id,action_type,location_id,inspector_id,created_at,internal_status,gps_check,inspector:profiles(id,full_name),location:locations(id,name,city)')
+      .select('id,action_type,location_id,inspector_id,created_at,internal_status,gps_check,auto_closed_at,manual_correction,proof_skip_reason,inspector:profiles(id,full_name),location:locations(id,name,city)')
       .gte('created_at', shiftIso(startIso, -PAIRING_MARGIN_MS)).lt('created_at', shiftIso(endIso, PAIRING_MARGIN_MS))
       .order('created_at', { ascending: true }).order('id', { ascending: true })),
     wantChecks
@@ -578,6 +677,12 @@ export async function buildMonthlyReport(
     const g = await gpsSection(service, startIso, endIso, logs, styles, false)
     parts.push(g.html)
     gpsAlertCount = g.alertCount
+  }
+
+  if (sections.includes('open_visits')) {
+    const o = await openVisitsSection(service, allLogs, startIso, endIso, styles, false)
+    parts.push(o.html)
+    gpsAlertCount += o.count
   }
 
   const subject = `דוח חודשי - ${label}`

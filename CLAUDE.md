@@ -122,9 +122,9 @@ The utility handles VAPID config check, fetches admin subscriptions, sends via `
 
 **Push subscription UI**: admins use the Bell/BellOff button in the header (`AdminShell.tsx`); inspectors use the "התראות לטלפון" card in the profile tab (`components/inspector/PushCard.tsx`), and the prompt at the top of the home tab (`components/inspector/PushPrompt.tsx`, shown while off, blocked or needing the iPhone install; "לא עכשיו" hides it 3 days via localStorage `pushPromptSnoozedUntil`). The admin inspectors tab shows push on/off and the 30-day GPS rate per inspector (`/api/admin/inspector-health`, SQL `inspector_scan_health`). Both go through `lib/utils/pushClient.ts` (`readPushState`, `enablePush`, `disablePush`), which POSTs to `/api/push/subscribe`. `push_subscriptions.subscription` (jsonb) is NOT NULL: the route must keep writing it (until 26/11/2026 it did not, and every sign-up failed silently). `readPushState()` re-saves an existing browser subscription on load. On iPhone, web push works only when the app is installed to the home screen. The DELETE endpoint is scoped by `user_id` to prevent cross-user unsubscription.
 
-## Forgot-exit reminder
+## Forgot-exit reminder and auto-close
 
-`/api/cron/forgot-exit` (CRON_SECRET; cron-job.org every 15 minutes) pushes an inspector once per entry that has no later counted scan at that location after `report_settings.forgot_exit_minutes` (default 240, 0 = off, set in the מנהלים tab via `/api/admin/gps-settings`). It claims `visit_logs.reminder_sent_at` before sending, so a run never repeats. Entries older than `MAX_VISIT_HOURS` are skipped. Logic in `lib/utils/forgotExit.ts`. Inspectors without push turned on get nothing; the admin card shows how many have it on.
+`/api/cron/forgot-exit` (CRON_SECRET; cron-job.org every 15 minutes) does two jobs. (1) Reminder: pushes an inspector once per entry that has no later counted scan at that location after `report_settings.forgot_exit_minutes` (default 240, 0 = off), claiming `visit_logs.reminder_sent_at` first. (2) Auto-close: stamps `visit_logs.auto_closed_at` on entries still open after `report_settings.auto_close_hours` (4..12, default 12) and pushes the inspector; only entries that crossed the limit in the last 2 h (`AUTO_CLOSE_WINDOW_H`), so history is never rewritten. Both settings are in the מנהלים tab card "ביקור שלא נסרקה בו יציאה" via `/api/admin/gps-settings`; the reminder must be shorter than the auto-close. Helpers: `lib/utils/forgotExit.ts`, `lib/utils/autoClose.ts`. A stamped entry is a visit with no exit: 0 minutes, "נסגר אוטומטית"; never write an exit time for it. `pairVisits()` lets only an exit from before the stamp or an approved correction (`manual_correction`) close it, so every query feeding `pairVisits()` must select `auto_closed_at` and `manual_correction`. The scan route treats a stamped entry, or one older than the setting, as stale (next scan = new entry) and stamps it. Inspectors without push turned on get no pushes; the admin card shows how many have it on.
 
 ## Inspector scan flow (security design)
 
@@ -260,6 +260,8 @@ Table `cities` (`name_he` unique, `name_en`, `active`). A location points to a c
 
 All inspector photo pickers use the shared `components/ui/PhotoAddControl.tsx`: two buttons, "צלם" (a `capture="environment"` input) and "מהגלריה" (no `capture`). Used by the visit checklist, deficiency report (post-submit, via `report_photos`), and the location visit photo modal. Don't reintroduce a single camera-only input.
 
+**Required proof photo** (`report_settings.require_proof_photo`, default off, card "הוכחת תמונה בבדיקות" in the מנהלים tab): a visit with ticked checks needs one photo tied to a check, or a reason (3+ characters) saved on `visit_logs.proof_skip_reason`. Enforced in `/api/inspector/exit-form` (400 `proof_required`); the checklist page asks for it before sending. The visit logs column shows a preview of the first photo (`visit-photo-counts` with `thumbs: true` returns `{ counts, thumbs }`) or "ללא תמונה".
+
 Exception, on purpose: the **proof photo per checklist item** ("צלם הוכחה" under a ticked item in `app/inspector/checklist/page.tsx`) is camera only, because it proves the check was done now. Stored in `visit_photos` with `checklist_item_id` (null = general visit photo). Limits: 10 general photos per visit, 3 per item. Admins see them grouped by item in `components/admin/VisitPhotosModal.tsx` (visit logs tab, and the "הוכחה" column of the location window's בדיקות tab). `/api/admin/visit-photo-counts` queries ids in chunks of 150; never put thousands of ids in one `.in()`.
 
 ## Inspector scan UX
@@ -307,6 +309,10 @@ Inactive locations render at 55% opacity with `cursor: default` and no click han
 ## Check-in state indicator
 
 Inspector home location cards show "בפנים" (entry) or "בחוץ" (exit / no history) derived from the `visitMap` built in `loadAll()`. No additional fetch needed.
+
+## Certificate expiry
+
+`locations.kashrus_certificate_expires_on` (date, set on the certificate tab via `CertificateExpiryField`). Helpers in `lib/utils/certExpiry.ts` (Bangkok days, `certStatus()`, stages 1 = 30 days, 2 = 7 days, 3 = expired). `runCertificateCheck()` (`lib/utils/certCheck.ts`) runs from the hourly `/api/cron/daily-report` once a day from 08:00 Bangkok (`report_settings.cert_check_last_date`, claimed first), even when the email is off, and pushes admins + the restaurant's inspectors once per stage (`certificate_alert_stage` claimed before the push; `certificate_alert_at`). Trigger `locations_reset_cert_alert` resets the stage when the date changes. UI: dashboard `CertificatesDueCard`, `CertFlag` in the locations list, inspector home and restaurant page. Daily email section `certificate_expiry` (full list when an alert went out in the last 24 h, one line otherwise).
 
 ## Visit time (pairing)
 
@@ -359,6 +365,8 @@ Forms using `defaultValue` must have `key={location.updated_at ?? 'loading'}` so
 - Never use the em dash character (Unicode U+2014) in any UI copy, error messages, buttons, tooltips, labels, modal titles, push notification bodies, comments, or documentation.
 
 ## Scheduled email reports (daily + monthly)
+
+Sections (`ReportSection`): `time_per_restaurant`, `deficiencies`, `checklist_details`, `gps_alerts`, `open_visits` ("ביקורים שלא נסגרו", also monthly), `certificate_expiry` (daily only). Add a section in four places: the type, `VALID_SECTIONS` in `app/api/admin/report-settings/route.ts`, the option lists in `ReportSettings.tsx`, and the builder.
 
 Two manager reports, both configured from the single-row `report_settings` table and edited in
 `components/admin/ReportSettings.tsx` (two cards). Recipients (`recipients text[]`) are shared

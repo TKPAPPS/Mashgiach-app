@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
 import { buildDailyReport, bangkokDateStr, bangkokHour } from '@/lib/utils/dailyReport'
 import { sendReportEmail } from '@/lib/utils/sendReportEmail'
+import { runCertificateCheck } from '@/lib/utils/certCheck'
 import type { ReportSection } from '@/lib/supabase/types'
 
 export const dynamic = 'force-dynamic'
@@ -20,11 +21,15 @@ export async function GET(req: NextRequest) {
   }
 
   const service = createServiceClient()
+  // Certificate expiry alerts ride on this hourly cron; they run even when the
+  // email is off. ?force=1 does not force them (that would re-run the day).
+  const cert = await runCertificateCheck(service)
+
   const { data: row } = await service.from('report_settings').select('*').limit(1).maybeSingle()
 
-  if (!row) return NextResponse.json({ status: 'no-config' })
-  if (!row.enabled) return NextResponse.json({ status: 'disabled' })
-  if (!row.recipients?.length) return NextResponse.json({ status: 'no-recipients' })
+  if (!row) return NextResponse.json({ status: 'no-config', cert })
+  if (!row.enabled) return NextResponse.json({ status: 'disabled', cert })
+  if (!row.recipients?.length) return NextResponse.json({ status: 'no-recipients', cert })
 
   const now = new Date()
   const todayBkk = bangkokDateStr(now)
@@ -34,8 +39,8 @@ export async function GET(req: NextRequest) {
   const force = req.nextUrl.searchParams.get('force') === '1'
 
   if (!force) {
-    if (bangkokHour(now) !== targetHour) return NextResponse.json({ status: 'not-time-yet', targetHour })
-    if (row.last_sent_date === todayBkk) return NextResponse.json({ status: 'already-sent' })
+    if (bangkokHour(now) !== targetHour) return NextResponse.json({ status: 'not-time-yet', targetHour, cert })
+    if (row.last_sent_date === todayBkk) return NextResponse.json({ status: 'already-sent', cert })
   }
 
   const sections = (row.sections?.length ? row.sections : ['time_per_restaurant', 'deficiencies', 'checklist_details']) as ReportSection[]
@@ -47,5 +52,5 @@ export async function GET(req: NextRequest) {
   if (!res.ok) return NextResponse.json({ status: 'send-failed', error: res.error }, { status: 500 })
 
   await service.from('report_settings').update({ last_sent_date: todayBkk }).eq('id', row.id)
-  return NextResponse.json({ status: 'sent', date: dateStr, recipients: row.recipients.length })
+  return NextResponse.json({ status: 'sent', date: dateStr, recipients: row.recipients.length, cert })
 }

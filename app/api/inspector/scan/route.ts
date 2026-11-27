@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
   const scan_method: 'qr' | 'gps' = byLocation ? 'gps' : 'qr'
 
   const { data: settings } = await service.from('report_settings')
-    .select('gps_enforcement,location_checkin_enabled').limit(1).maybeSingle()
+    .select('gps_enforcement,location_checkin_enabled,auto_close_hours').limit(1).maybeSingle()
   if (byLocation && settings?.location_checkin_enabled === false) {
     return NextResponse.json({ success: false, code: 'location_checkin_off' }, { status: 403 })
   }
@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
   // Entry or exit: based only on the last counted visit row.
   const { data: lastLog } = await service
     .from('visit_logs')
-    .select('id,action_type,created_at')
+    .select('id,action_type,created_at,auto_closed_at')
     .eq('inspector_id', user.id)
     .eq('location_id', location.id)
     .in('internal_status', COUNTED_STATUSES)
@@ -117,9 +117,13 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  // A stale open entry (forgot to scan out) is left unclosed; this scan opens a new visit.
+  // A stale open entry (forgot to scan out, or closed automatically) is left
+  // unclosed; this scan opens a new visit. The limit is the admin's auto-close
+  // setting, never more than MAX_VISIT_HOURS.
+  const closeAfterMs = Math.min(settings?.auto_close_hours ?? MAX_VISIT_HOURS, MAX_VISIT_HOURS) * 3600_000
+  const staleEntry = !!lastLog && lastLog.action_type === 'entry' && (!!lastLog.auto_closed_at || lastAgeMs > closeAfterMs)
   const action_type: 'entry' | 'exit' =
-    (!lastLog || lastLog.action_type === 'exit' || lastAgeMs > MAX_VISIT_HOURS * 3600_000) ? 'entry' : 'exit'
+    (!lastLog || lastLog.action_type === 'exit' || staleEntry) ? 'entry' : 'exit'
 
   // The button said "entry" but the server would record an exit (or the other
   // way round): another device or a QR scan changed the state. Write nothing.
@@ -154,6 +158,13 @@ export async function POST(req: NextRequest) {
   // Never report a scan as recorded when the row was not written.
   if (insertError || !visitLog) {
     return NextResponse.json({ success: false, code: 'error' }, { status: 500 })
+  }
+
+  // The new visit replaces a stale one: stamp it now, so it never waits for the
+  // cron and can never be closed by a later exit.
+  if (staleEntry && !rejected && lastLog && !lastLog.auto_closed_at) {
+    await service.from('visit_logs').update({ auto_closed_at: new Date().toISOString() })
+      .eq('id', lastLog.id).is('auto_closed_at', null)
   }
 
   // Alerts: always for a far scan; for other failures only when the scan was blocked

@@ -9,7 +9,7 @@ const MAX_VISIT_MS = MAX_VISIT_HOURS * 3600_000
 const TZ = 'Asia/Bangkok'
 
 type PairLog = Pick<VisitLog, 'id' | 'inspector_id' | 'location_id' | 'action_type' | 'created_at'> &
-  Partial<Pick<VisitLog, 'internal_status' | 'gps_check'>>
+  Partial<Pick<VisitLog, 'internal_status' | 'gps_check' | 'auto_closed_at' | 'manual_correction'>>
 
 export type VisitState =
   | 'closed'      // entry + exit within MAX_VISIT_HOURS
@@ -26,6 +26,8 @@ export type VisitPair<L extends PairLog = PairLog> = {
   state: VisitState
   /** True when either scan was a GPS mismatch (counted but suspicious). */
   flagged: boolean
+  /** no_exit because the cron closed it (auto_closed_at), not only by age. */
+  autoClosed: boolean
 }
 
 export function isCounted(l: Pick<PairLog, 'internal_status'>): boolean {
@@ -40,6 +42,8 @@ export function isCounted(l: Pick<PairLog, 'internal_status'>): boolean {
  *   gap means the inspector forgot to scan out, so the entry is "no_exit" and the
  *   exit is an orphan (the same rule the scan route uses to pick entry vs exit).
  * - Two entries in a row: the first is "no_exit".
+ * - An entry stamped auto_closed_at is "no_exit" (autoClosed). Only an exit made
+ *   before the stamp, or an approved correction (manual_correction), closes it.
  */
 export function pairVisits<L extends PairLog>(logs: L[], now: number = Date.now()): VisitPair<L>[] {
   // Rows whose inspector was deleted have inspector_id null; they belong to
@@ -52,7 +56,11 @@ export function pairVisits<L extends PairLog>(logs: L[], now: number = Date.now(
     inspector_id: (entry ?? exit)!.inspector_id,
     location_id: (entry ?? exit)!.location_id,
     entry, exit, minutes, state, flagged: flag(entry) || flag(exit),
+    autoClosed: state === 'no_exit' && !!entry?.auto_closed_at,
   })
+  // A stamped entry is closed only by an exit from before the stamp or a correction.
+  const canClose = (entry: L, exit: L) =>
+    !entry.auto_closed_at || !!exit.manual_correction || exit.created_at <= entry.auto_closed_at
 
   for (const l of sorted) {
     const key = `${l.inspector_id}|${l.location_id ?? ''}`
@@ -62,7 +70,7 @@ export function pairVisits<L extends PairLog>(logs: L[], now: number = Date.now(
       open.set(key, l)
     } else {
       const gap = prev ? new Date(l.created_at).getTime() - new Date(prev.created_at).getTime() : Infinity
-      if (prev && gap >= 0 && gap <= MAX_VISIT_MS) {
+      if (prev && gap >= 0 && gap <= MAX_VISIT_MS && canClose(prev, l)) {
         out.push(pair(prev, l, 'closed', Math.round(gap / 60000)))
       } else {
         if (prev) out.push(pair(prev, null, 'no_exit', null))
@@ -73,7 +81,7 @@ export function pairVisits<L extends PairLog>(logs: L[], now: number = Date.now(
   }
   for (const l of open.values()) {
     const age = now - new Date(l.created_at).getTime()
-    out.push(pair(l, null, age > MAX_VISIT_MS ? 'no_exit' : 'open', null))
+    out.push(pair(l, null, age > MAX_VISIT_MS || l.auto_closed_at ? 'no_exit' : 'open', null))
   }
   return out
 }
@@ -86,7 +94,7 @@ function fmtClock(iso: string): string {
   return new Intl.DateTimeFormat('he-IL', { timeZone: TZ, hour: '2-digit', minute: '2-digit' }).format(new Date(iso))
 }
 
-export type VisitCell = { text: string; kind: 'duration' | 'open' | 'no_exit' | 'orphan' }
+export type VisitCell = { text: string; kind: 'duration' | 'open' | 'no_exit' | 'auto_closed' | 'orphan' }
 
 /**
  * Text for the "זמן שהייה" column, keyed by log id. The duration sits on the
@@ -98,7 +106,7 @@ export function visitCells(logs: PairLog[], now: number = Date.now()): Record<st
   for (const p of pairVisits(logs, now)) {
     if (p.state === 'closed' && p.exit) cells[p.exit.id] = { text: fmtMinutes(p.minutes ?? 0), kind: 'duration' }
     else if (p.state === 'open' && p.entry) cells[p.entry.id] = { text: `בפנים מאז ${fmtClock(p.entry.created_at)}`, kind: 'open' }
-    else if (p.state === 'no_exit' && p.entry) cells[p.entry.id] = { text: 'לא נסגר', kind: 'no_exit' }
+    else if (p.state === 'no_exit' && p.entry) cells[p.entry.id] = p.autoClosed ? { text: 'נסגר אוטומטית', kind: 'auto_closed' } : { text: 'לא נסגר', kind: 'no_exit' }
     else if (p.state === 'orphan_exit' && p.exit) cells[p.exit.id] = { text: 'ללא כניסה', kind: 'orphan' }
   }
   return cells
@@ -125,7 +133,7 @@ export const PAIRING_MARGIN_MS = MAX_VISIT_MS
  * there is an entry that is not older than MAX_VISIT_HOURS (an older one was
  * never closed; the next scan opens a new visit, same rule as the scan route).
  */
-export function isInside(last: Pick<VisitLog, 'action_type' | 'created_at'> | null | undefined, now: number = Date.now()): boolean {
-  if (!last || last.action_type !== 'entry') return false
+export function isInside(last: (Pick<VisitLog, 'action_type' | 'created_at'> & { auto_closed_at?: string | null }) | null | undefined, now: number = Date.now()): boolean {
+  if (!last || last.action_type !== 'entry' || last.auto_closed_at) return false
   return now - new Date(last.created_at).getTime() <= MAX_VISIT_MS
 }

@@ -133,6 +133,7 @@ type Phase =
   | 'form'
   | 'confirm-empty'
   | 'confirm-skip'
+  | 'need-proof'
   | 'success'
   | 'error'
 
@@ -153,6 +154,9 @@ function ChecklistInner() {
   const [errorMsg, setErrorMsg] = useState('')
   const [itemPhotos, setItemPhotos] = useState<Record<string, VisitPhoto[]>>({})
   const [generalPhotos, setGeneralPhotos] = useState<VisitPhoto[] | null>(null)
+  const [requireProof, setRequireProof] = useState(false)
+  const [noCamera, setNoCamera] = useState(false)
+  const [skipReason, setSkipReason] = useState('')
 
   useEffect(() => {
     if (!hasParams) return
@@ -173,6 +177,8 @@ function ChecklistInner() {
           .order('sort_order')
         result = (globals ?? []) as ChecklistItem[]
       }
+      fetch('/api/inspector/app-settings').then(r => r.ok ? r.json() : null)
+        .then(d => { if (!cancelled) setRequireProof(!!d?.require_proof_photo) }).catch(() => {})
       // Photos already taken for this visit (e.g. after a reload).
       const existing: VisitPhoto[] = await fetch(`/api/inspector/visit-photos?visit_log_id=${visitLogId}`)
         .then(r => r.ok ? r.json() : []).catch(() => [])
@@ -249,7 +255,9 @@ function ChecklistInner() {
     )
   }
 
-  async function submit() {
+  const hasProof = Object.values(itemPhotos).some(list => list.length > 0)
+
+  async function submit(reason?: string) {
     setSubmitting(true)
     const checks = items
       .filter(item => checked.has(item.id))
@@ -263,9 +271,14 @@ function ChecklistInner() {
     const res = await fetch('/api/inspector/exit-form', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ visit_log_id: visitLogId, location_id: locationId, checks }),
+      body: JSON.stringify({ visit_log_id: visitLogId, location_id: locationId, checks, proof_skip_reason: reason }),
     })
     const data = await res.json()
+    if (data.code === 'proof_required') {
+      // The admin turned the rule on during this visit: ask for the photo here.
+      setRequireProof(true); setSubmitting(false); setPhase('need-proof')
+      return
+    }
     if (!res.ok || !data.success) {
       setErrorMsg(data.error ?? 'שגיאה בשליחה')
       setSubmitting(false)
@@ -279,6 +292,8 @@ function ChecklistInner() {
   function handleSubmitClick() {
     if (checked.size === 0) {
       setPhase('confirm-empty')
+    } else if (requireProof && !hasProof) {
+      setPhase('need-proof')
     } else {
       submit()
     }
@@ -353,7 +368,7 @@ function ChecklistInner() {
                 האם להגיש את הרשימה ללא פריטים מסומנים?
               </p>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button className="button button--primary button--sm" onClick={submit}>כן, הגש בכל זאת</button>
+                <button className="button button--primary button--sm" onClick={() => submit()}>כן, הגש בכל זאת</button>
                 <button className="button button--ghost button--sm" onClick={() => setPhase('form')}>ביטול</button>
               </div>
             </div>
@@ -408,17 +423,55 @@ function ChecklistInner() {
               <p style={{ marginTop: 12, fontSize: '.78rem', color: 'var(--muted)' }}>
                 {checked.size} מתוך {items.length} פריטים סומנו
               </p>
+              {requireProof && (
+                <p style={{ margin: '4px 0 0', fontSize: '.8rem', color: hasProof ? 'var(--success)' : 'var(--warning)', display: 'flex', alignItems: 'center', gap: 6 }} data-testid="proof-rule">
+                  <Camera size={13} aria-hidden />
+                  {hasProof ? 'יש תמונת הוכחה לביקור הזה.' : 'חובה לצלם הוכחה לפחות לבדיקה אחת (כפתור "צלם הוכחה" מתחת לבדיקה שסימנת).'}
+                </p>
+              )}
             </div>
           </div>
         )}
 
         {/* Photo upload */}
-        {(phase === 'form' || phase === 'confirm-empty' || phase === 'confirm-skip') && visitLogId && generalPhotos && (
+        {/* Required proof photo is missing: take one, or say why not */}
+        {phase === 'need-proof' && !hasProof && (
+          <div className="card" style={{ borderColor: 'var(--warning)', background: 'var(--warning-light)' }} data-testid="need-proof">
+            <div className="card__body" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, color: 'var(--warning)' }}>
+                <Camera size={16} /> חסרה תמונת הוכחה
+              </div>
+              <p style={{ fontSize: '.88rem', margin: 0, lineHeight: 1.55 }}>
+                צלם הוכחה לפחות לבדיקה אחת: לחץ &quot;צלם הוכחה&quot; מתחת לבדיקה שסימנת, ואז שמור.
+              </p>
+              {!noCamera ? (
+                <button type="button" className="button button--ghost button--sm" style={{ alignSelf: 'flex-start' }} onClick={() => setNoCamera(true)}>
+                  לא ניתן לצלם?
+                </button>
+              ) : (
+                <>
+                  <label className="field">
+                    <span>למה לא ניתן לצלם?</span>
+                    <textarea rows={2} value={skipReason} onChange={e => setSkipReason(e.target.value)} maxLength={300}
+                      placeholder="לדוגמה: המצלמה בטלפון לא עובדת" />
+                  </label>
+                  <p style={{ fontSize: '.78rem', color: 'var(--muted)', margin: 0 }}>הביקור יסומן &quot;ללא תמונה&quot; והסיבה תופיע אצל המנהל.</p>
+                  <button type="button" className="button button--primary button--sm" style={{ alignSelf: 'flex-start' }}
+                    disabled={submitting || skipReason.trim().length < 3} onClick={() => submit(skipReason.trim())}>
+                    {submitting ? <span className="spinner" /> : 'שמור בלי תמונה'}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {(phase === 'form' || phase === 'confirm-empty' || phase === 'confirm-skip' || phase === 'need-proof') && visitLogId && generalPhotos && (
           <PhotoUpload visitLogId={visitLogId} initial={generalPhotos} />
         )}
 
         {/* Actions */}
-        {(phase === 'form' || phase === 'confirm-empty' || phase === 'confirm-skip') && (
+        {(phase === 'form' || phase === 'confirm-empty' || phase === 'confirm-skip' || phase === 'need-proof') && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <button
               className="button button--primary"

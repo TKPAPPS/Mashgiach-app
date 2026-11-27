@@ -7,6 +7,7 @@ import { formatDateTime, KASHRUT_TYPE_LABELS } from '@/lib/utils/format'
 import MenuSection from '@/components/MenuSection'
 import VisitPhotosModal from './VisitPhotosModal'
 import ScanMethodTag from './ScanMethodTag'
+import CertificateExpiryField from './CertificateExpiryField'
 import { certificateObjectPath } from '@/lib/utils/storagePath'
 import type { Location, VisitLog, DeficiencyReport, VisitCheck, Profile, ChecklistItem } from '@/lib/supabase/types'
 import { Upload, Trash2, ExternalLink, X, Camera, Link2 } from 'lucide-react'
@@ -443,7 +444,12 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
                     onClick={deleteCertificate}><Trash2 size={14} /> מחק</button>
                 </div>
               </div>
-              <p style={{ fontSize: '.8rem', color: 'var(--muted)', marginTop: 8 }}>להחלפה, העלה קובץ חדש:</p>
+              <div style={{ marginTop: 12 }}>
+                <CertificateExpiryField key={location.kashrus_certificate_expires_on ?? 'none'} locationId={location.id}
+                  value={location.kashrus_certificate_expires_on}
+                  onSaved={d => setLocation(l => ({ ...l, kashrus_certificate_expires_on: d }))} />
+              </div>
+              <p style={{ fontSize: '.8rem', color: 'var(--muted)', marginTop: 8 }}>להחלפה, העלה קובץ חדש (ואז עדכן את התאריך):</p>
             </div>
           ) : null}
           <label className="fileUpload">
