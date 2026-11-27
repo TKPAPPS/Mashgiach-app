@@ -27,6 +27,7 @@ export async function GET(req: NextRequest) {
     rows = (data ?? []).map((l: Record<string, unknown>) => ({
       'תאריך': l.created_at,
       'פעולה': l.action_type === 'entry' ? 'כניסה' : 'יציאה',
+      'שיטה': l.scan_method === 'gps' ? 'מיקום' : 'QR',
       'משגיח': (l.inspector as { full_name: string } | undefined)?.full_name ?? '-',
       'מקום': (l.location as { name: string } | undefined)?.name ?? '-',
       'עיר': (l.location as { city: string | null } | undefined)?.city ?? '-',

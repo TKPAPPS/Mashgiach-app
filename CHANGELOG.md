@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-11-27: Check-in by location, GPS rate per inspector, notification prompt
+
+From the manager's follow-up list of 27/11 (points 1, 2א, 2ב).
+
+- **"כניסה במיקום" / "יציאה במיקום" (1)**: a second button under "סרוק QR" on the restaurant page
+  (`components/inspector/LocationCheckIn.tsx`), for when the QR cannot be read. It posts
+  `location_id` + `expected_action` to the same `/api/inspector/scan` (same role, assignment, toggle,
+  debounce, alerts, impossible travel). On purpose stricter than the note asked: a location within
+  100 m is required in every GPS mode, because a scan with no QR and no location proves nothing.
+  A failure is saved as `gps_rejected` with a `gps_alerts` row and offers the correction request.
+  If the server's entry/exit differs from what the button showed it writes nothing (`state_changed`);
+  a second tap within 2 minutes asking for the other action gets `too_soon`.
+  `visit_logs.scan_method` (`qr` / `gps`); admin lists show a "במיקום" tag, exports get a "שיטה"
+  column. Admin switch "אפשר כניסה ויציאה במיקום" (`report_settings.location_checkin_enabled`,
+  default on) in the GPS card of the מנהלים tab; the inspector app reads it from
+  `/api/inspector/app-settings`. The scan page points to the button when the camera fails or a code
+  is not recognised.
+- Browser scan code (location read, scan POST, Hebrew messages) moved to `lib/utils/scanClient.ts`,
+  shared by the scan page and the new button. `isInside()` added to `lib/utils/visits.ts`.
+- **GPS rate per inspector (2א)**: inspectors tab columns "מיקום (30 יום)" (share of real scans with a
+  location: green from 90%, amber from 50%, red below) and "התראות" (push on or off). SQL function
+  `inspector_scan_health(p_days)` (service role only), route `/api/admin/inspector-health`.
+- **Notification prompt (2ב)**: `components/inspector/PushPrompt.tsx` at the top of the inspector home
+  while notifications are off, blocked, or need the iPhone home-screen install. "לא עכשיו" hides it
+  for 3 days. The phone only asks for permission after a tap, so it cannot ask on its own.
+
 ## 2026-11-27: Kashrut certificates are private
 
 From the manager's follow-up list of 27/11 (point 2ו).

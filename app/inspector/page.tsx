@@ -7,6 +7,7 @@ import Image from 'next/image'
 import { formatRelative, formatDate } from '@/lib/utils/format'
 import PhotoAddControl from '@/components/ui/PhotoAddControl'
 import PushCard from '@/components/inspector/PushCard'
+import PushPrompt from '@/components/inspector/PushPrompt'
 import { toJpegFile } from '@/lib/utils/image'
 import type { Location, Profile, VisitLog } from '@/lib/supabase/types'
 import { MAX_VISIT_HOURS } from '@/lib/utils/gps'
@@ -85,6 +86,7 @@ export default function InspectorHome() {
       <main style={{ padding: '16px 14px 80px', display: 'flex', flexDirection: 'column', gap: 12 }}>
         {activeTab === 'home' && (
           <>
+            <PushPrompt />
             <div style={{ fontWeight: 700, fontSize: '1.05rem', marginBottom: 4 }}>המקומות שלי</div>
             {loading
               ? <div className="emptyState"><span className="spinner" /></div>

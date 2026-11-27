@@ -23,6 +23,7 @@ export async function GET() {
   return NextResponse.json({
     gps_enforcement: row?.gps_enforcement ?? 'warn',
     forgot_exit_minutes: row?.forgot_exit_minutes ?? FORGOT_EXIT_DEFAULT_MIN,
+    location_checkin_enabled: row?.location_checkin_enabled !== false,
     inspectors_total: ids.length,
     inspectors_with_push: new Set((subs ?? []).map((s: { user_id: string }) => s.user_id)).size,
   })
@@ -31,7 +32,7 @@ export async function GET() {
 export async function PUT(req: NextRequest) {
   if (!await requireAdmin()) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const body = await req.json().catch(() => ({}))
-  const update: { gps_enforcement?: GpsEnforcement; forgot_exit_minutes?: number; updated_at: string } = { updated_at: new Date().toISOString() }
+  const update: { gps_enforcement?: GpsEnforcement; forgot_exit_minutes?: number; location_checkin_enabled?: boolean; updated_at: string } = { updated_at: new Date().toISOString() }
   if ('gps_enforcement' in body) {
     if (!MODES.includes(body.gps_enforcement)) return NextResponse.json({ error: 'ערך לא תקין' }, { status: 400 })
     update.gps_enforcement = body.gps_enforcement
@@ -40,14 +41,18 @@ export async function PUT(req: NextRequest) {
     if (!validForgotExitMinutes(body.forgot_exit_minutes)) return NextResponse.json({ error: 'ערך לא תקין' }, { status: 400 })
     update.forgot_exit_minutes = body.forgot_exit_minutes
   }
-  if (update.gps_enforcement === undefined && update.forgot_exit_minutes === undefined) {
+  if ('location_checkin_enabled' in body) {
+    if (typeof body.location_checkin_enabled !== 'boolean') return NextResponse.json({ error: 'ערך לא תקין' }, { status: 400 })
+    update.location_checkin_enabled = body.location_checkin_enabled
+  }
+  if (update.gps_enforcement === undefined && update.forgot_exit_minutes === undefined && update.location_checkin_enabled === undefined) {
     return NextResponse.json({ error: 'ערך לא תקין' }, { status: 400 })
   }
   const service = createServiceClient()
   const row = await getSettingsRow(service)
   if (!row) return NextResponse.json({ error: 'שגיאה בטעינת ההגדרות' }, { status: 500 })
   const { data, error } = await service.from('report_settings')
-    .update(update).eq('id', row.id).select('gps_enforcement,forgot_exit_minutes').single()
+    .update(update).eq('id', row.id).select('gps_enforcement,forgot_exit_minutes,location_checkin_enabled').single()
   if (error) return NextResponse.json({ error: 'שגיאה בשמירה' }, { status: 500 })
   return NextResponse.json(data)
 }

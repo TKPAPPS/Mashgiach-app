@@ -6,6 +6,8 @@ import { ArrowRight, ExternalLink, QrCode, Camera, X, Trash2, Download } from 'l
 import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react'
 import { formatRelative, KASHRUT_TYPE_LABELS } from '@/lib/utils/format'
 import MenuSection from '@/components/MenuSection'
+import LocationCheckIn from '@/components/inspector/LocationCheckIn'
+import { isInside } from '@/lib/utils/visits'
 import { useToast } from '@/components/ui/Toast'
 import { toJpegFile } from '@/lib/utils/image'
 import PhotoAddControl from '@/components/ui/PhotoAddControl'
@@ -129,6 +131,7 @@ export default function InspectorLocationPage({ params }: { params: Promise<{ id
   const { toast } = useToast()
   const [location, setLocation] = useState<Location | null>(null)
   const [recentVisits, setRecentVisits] = useState<VisitLog[]>([])
+  const [locationCheckin, setLocationCheckin] = useState(false)
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([])
   const [loading, setLoading] = useState(true)
   const [photoCounts, setPhotoCounts] = useState<Record<string, number>>({})
@@ -184,6 +187,9 @@ export default function InspectorLocationPage({ params }: { params: Promise<{ id
     setWorkingDays(l.working_days ? l.working_days.split(',').filter(Boolean) : [])
     setKashrusProcedure(l.kashrus_procedure ?? '')
     setLoading(false)
+
+    fetch('/api/inspector/app-settings').then(r => r.ok ? r.json() : null)
+      .then(d => setLocationCheckin(!!d?.location_checkin_enabled)).catch(() => {})
 
     // Procedure appliance photos + ticked checks (signed URLs from the server).
     fetch(`/api/inspector/procedure?location_id=${id}`)
@@ -585,6 +591,10 @@ export default function InspectorLocationPage({ params }: { params: Promise<{ id
           onClick={() => router.push('/inspector/scan')}>
           <QrCode size={18} /> סרוק QR לכניסה / יציאה
         </button>
+        {locationCheckin && location.status === 'active' && (
+          <LocationCheckIn locationId={location.id} locationName={location.name}
+            inside={isInside(recentVisits[0])} onChanged={loadAll} />
+        )}
 
         {/* Recent visits */}
         {recentVisits.length > 0 && (

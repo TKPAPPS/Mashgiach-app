@@ -445,3 +445,13 @@ ALTER TABLE visit_logs ADD COLUMN reminder_sent_at timestamptz;              -- 
 ALTER TABLE visit_photos ADD COLUMN checklist_item_id uuid REFERENCES checklist_items(id) ON DELETE SET NULL;  -- null = general photo
 CREATE INDEX visit_photos_visit_item_idx ON visit_photos(visit_log_id, checklist_item_id);
 CREATE INDEX visit_logs_open_entry_idx ON visit_logs(created_at) WHERE action_type = 'entry' AND reminder_sent_at IS NULL;
+
+-- -------------------------------------------------------
+-- 27/11/2026: check-in by location + GPS rate per inspector
+-- (migration location_checkin_scan_health)
+-- -------------------------------------------------------
+ALTER TABLE visit_logs ADD COLUMN scan_method text NOT NULL DEFAULT 'qr' CHECK (scan_method IN ('qr','gps'));  -- gps = "כניסה במיקום" button
+ALTER TABLE report_settings ADD COLUMN location_checkin_enabled boolean NOT NULL DEFAULT true;
+-- inspector_scan_health(p_days int default 30) RETURNS (inspector_id, scans, with_gps):
+-- real scan attempts (manual_correction = false; success, gps_mismatch, gps_rejected) in the
+-- last p_days, and how many carried a location. EXECUTE granted to service_role only.
