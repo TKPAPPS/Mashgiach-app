@@ -11,6 +11,8 @@ import type { VisitStatus } from '@/lib/supabase/types'
 // kept for the audit trail but never drive the entry/exit toggle.
 const COUNTED_STATUSES: VisitStatus[] = ['success', 'gps_mismatch']
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 function num(v: unknown): number | null {
   return typeof v === 'number' && isFinite(v) ? v : null
 }
@@ -30,7 +32,19 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => ({}))
   const qr_code = typeof body.qr_code === 'string' ? body.qr_code.trim() : ''
-  if (!qr_code) return NextResponse.json({ error: 'Missing QR code' }, { status: 400 })
+  // Check-in by location (no QR): the restaurant page sends its id and the
+  // action its button showed. Always strict on GPS, whatever the mode.
+  const byLocation = !qr_code && typeof body.location_id === 'string' && UUID.test(body.location_id)
+  const expected = body.expected_action === 'entry' || body.expected_action === 'exit' ? body.expected_action as 'entry' | 'exit' : null
+  if (!qr_code && !byLocation) return NextResponse.json({ error: 'Missing QR code' }, { status: 400 })
+  if (byLocation && !expected) return NextResponse.json({ error: 'Missing expected_action' }, { status: 400 })
+  const scan_method: 'qr' | 'gps' = byLocation ? 'gps' : 'qr'
+
+  const { data: settings } = await service.from('report_settings')
+    .select('gps_enforcement,location_checkin_enabled').limit(1).maybeSingle()
+  if (byLocation && settings?.location_checkin_enabled === false) {
+    return NextResponse.json({ success: false, code: 'location_checkin_off' }, { status: 403 })
+  }
 
   const lat = num(body.lat)
   const lng = num(body.lng)
@@ -44,21 +58,18 @@ export async function POST(req: NextRequest) {
     device_lat: lat,
     device_lng: lng,
     device_accuracy_m: accuracy_m,
-    qr_code_scanned: qr_code,
+    qr_code_scanned: qr_code || null,
+    scan_method,
   }
 
-  const { data: location } = await service
-    .from('locations')
-    .select('id,name,lat,lng')
-    .eq('qr_code', qr_code)
-    .eq('status', 'active')
-    .single()
+  const locQuery = service.from('locations').select('id,name,lat,lng').eq('status', 'active')
+  const { data: location } = await (byLocation ? locQuery.eq('id', body.location_id) : locQuery.eq('qr_code', qr_code)).maybeSingle()
 
   if (!location) {
     await service.from('visit_logs').insert({
       ...baseRow, location_id: null, action_type: 'entry', distance_meters: null, internal_status: 'invalid_location',
     })
-    return NextResponse.json({ success: false, code: 'invalid_qr' })
+    return NextResponse.json({ success: false, code: byLocation ? 'invalid_location' : 'invalid_qr' })
   }
 
   const { data: assignment } = await service
@@ -89,6 +100,11 @@ export async function POST(req: NextRequest) {
   const lastAgeMs = lastLog ? Date.now() - new Date(lastLog.created_at).getTime() : Infinity
 
   // A rescan seconds after the last one: return that visit, create nothing.
+  // From the location button, a second tap that asks for the other action is
+  // refused instead (it would otherwise look like that action was recorded).
+  if (lastLog && lastAgeMs < SCAN_DEBOUNCE_MS && byLocation && lastLog.action_type !== expected) {
+    return NextResponse.json({ success: false, code: 'too_soon' })
+  }
   if (lastLog && lastAgeMs < SCAN_DEBOUNCE_MS) {
     return NextResponse.json({
       success: true,
@@ -105,16 +121,22 @@ export async function POST(req: NextRequest) {
   const action_type: 'entry' | 'exit' =
     (!lastLog || lastLog.action_type === 'exit' || lastAgeMs > MAX_VISIT_HOURS * 3600_000) ? 'entry' : 'exit'
 
+  // The button said "entry" but the server would record an exit (or the other
+  // way round): another device or a QR scan changed the state. Write nothing.
+  if (byLocation && action_type !== expected) {
+    return NextResponse.json({ success: false, code: 'state_changed', action_type })
+  }
+
   const { check: gps_check, distance } = evaluateGps(
     { lat, lng, accuracy: accuracy_m },
     { lat: location.lat, lng: location.lng },
   )
 
-  const { data: settings } = await service.from('report_settings').select('gps_enforcement').limit(1).maybeSingle()
   const enforcement: GpsEnforcement = (settings?.gps_enforcement as GpsEnforcement | undefined) ?? 'warn'
 
   const failed = gps_check !== 'ok'
-  const rejected = failed && enforcement === 'block'
+  // Location check-in has no QR to fall back on, so a failed GPS check always rejects it.
+  const rejected = failed && (enforcement === 'block' || byLocation)
 
   let internal_status: 'success' | 'gps_mismatch' | 'gps_rejected' = 'success'
   if (rejected) internal_status = 'gps_rejected'
@@ -180,7 +202,7 @@ export async function POST(req: NextRequest) {
     action_type: rejected ? 'visit_rejected' : `visit_${action_type}`,
     performed_by: user.id,
     location_id: location.id,
-    details: { qr_code, distance_meters: distance, gps_check, gps_error, enforcement },
+    details: { qr_code: qr_code || null, scan_method, distance_meters: distance, gps_check, gps_error, enforcement },
     status: rejected ? 'failed' : 'success',
   })
 
@@ -190,7 +212,7 @@ export async function POST(req: NextRequest) {
 
   try {
     await notifyAdmins({
-      title: action_type === 'entry' ? 'כניסה חדשה' : 'יציאה חדשה',
+      title: `${action_type === 'entry' ? 'כניסה חדשה' : 'יציאה חדשה'}${byLocation ? ' (במיקום)' : ''}`,
       body: location.name,
       url: '/admin',
     })

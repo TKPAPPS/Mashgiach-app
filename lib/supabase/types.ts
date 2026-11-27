@@ -90,6 +90,8 @@ export type VisitLog = {
   /** When the forgot-exit push went out for this entry (cron). */
   reminder_sent_at?: string | null
   qr_code_scanned: string | null
+  /** 'qr' = QR scan, 'gps' = "כניסה במיקום" button (no QR, strict GPS). */
+  scan_method?: 'qr' | 'gps'
   created_at: string
   inspector?: Pick<Profile, 'id' | 'full_name'>
   location?: Pick<Location, 'id' | 'name' | 'city'>
@@ -301,6 +303,8 @@ export type ReportSettings = {
   gps_enforcement?: GpsEnforcement
   /** Push the inspector this many minutes after an entry with no exit; 0 = off. */
   forgot_exit_minutes?: number
+  /** Inspectors may check in and out by location, without the QR. */
+  location_checkin_enabled?: boolean
   updated_at: string
 }
 

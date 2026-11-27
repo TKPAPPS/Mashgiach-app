@@ -28,6 +28,7 @@ export default function InspectorsTab({ refreshKey, locations, emailMap }: Props
   const [assignedLocs, setAssignedLocs] = useState<Record<string, string[]>>({})
   const [contractLoading, setContractLoading] = useState<Record<string, boolean>>({})
   const [localEmailMap, setLocalEmailMap] = useState<Record<string, string | null>>(emailMap)
+  const [health, setHealth] = useState<Record<string, { scans: number; with_gps: number; push: boolean }> | null>(null)
 
   useEffect(() => { loadAll() }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -38,6 +39,8 @@ export default function InspectorsTab({ refreshKey, locations, emailMap }: Props
       supabase.from('inspector_locations').select('inspector_id,location_id'),
       fetch('/api/admin/users'),
     ])
+    fetch('/api/admin/inspector-health').then(r => r.ok ? r.json() : null)
+      .then(j => setHealth(j?.inspectors ?? {})).catch(() => setHealth({}))
     setInspectors((insp ?? []) as Profile[])
     const map: Record<string, string[]> = {}
     for (const row of (il ?? [])) {
@@ -187,7 +190,7 @@ export default function InspectorsTab({ refreshKey, locations, emailMap }: Props
           <div className="tableWrap">
             <table>
               <thead>
-                <tr><th>שם</th><th>אימייל</th><th>תאריך התחלה</th><th>ימי חופש</th><th>מקומות</th><th>חוזה</th><th></th></tr>
+                <tr><th>שם</th><th>אימייל</th><th>תאריך התחלה</th><th>ימי חופש</th><th>מקומות</th><th title="אחוז הסריקות עם מיקום ב-30 הימים האחרונים">מיקום (30 יום)</th><th>התראות</th><th>חוזה</th><th></th></tr>
               </thead>
               <tbody>
                 {inspectors.map(insp => (
@@ -200,6 +203,13 @@ export default function InspectorsTab({ refreshKey, locations, emailMap }: Props
                       <span className="badge badge--info">
                         {(assignedLocs[insp.id] ?? []).length} מקומות
                       </span>
+                    </td>
+                    <td className="noWrap" data-testid={`gps-health-${insp.id}`}><GpsHealth h={health?.[insp.id]} loading={health === null} /></td>
+                    <td className="noWrap" data-testid={`push-health-${insp.id}`}>
+                      {health === null ? <span className="mutedCell">…</span>
+                        : health[insp.id]?.push
+                          ? <span className="badge badge--success">פעילות</span>
+                          : <span className="badge badge--muted" title="המשגיח לא הפעיל התראות בטלפון, ולא יקבל תזכורת יציאה">כבויות</span>}
                     </td>
                     <td>
                       {insp.contract_url
@@ -394,5 +404,19 @@ export default function InspectorsTab({ refreshKey, locations, emailMap }: Props
         </Modal>
       )}
     </div>
+  )
+}
+
+// "95% (180/190)": green from 90%, amber from 50%, red below. A red cell means
+// most of this inspector's scans carry no location at all.
+function GpsHealth({ h, loading }: { h?: { scans: number; with_gps: number }; loading: boolean }) {
+  if (loading) return <span className="mutedCell">…</span>
+  if (!h || h.scans === 0) return <span className="mutedCell" title="אין סריקות ב-30 הימים האחרונים">אין סריקות</span>
+  const pct = Math.round((h.with_gps / h.scans) * 100)
+  const cls = pct >= 90 ? 'badge--success' : pct >= 50 ? 'badge--warning' : 'badge--danger'
+  return (
+    <span className={`badge ${cls}`} title={`${h.with_gps} מתוך ${h.scans} סריקות נשלחו עם מיקום`}>
+      {pct}% <span style={{ fontWeight: 400, opacity: .8 }}>({h.with_gps}/{h.scans})</span>
+    </span>
   )
 }

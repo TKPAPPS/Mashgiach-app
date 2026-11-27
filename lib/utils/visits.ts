@@ -119,3 +119,13 @@ export function bangkokRange(from?: string | null, to?: string | null): { fromIs
 
 /** How far before/after a window to fetch so visits crossing its edges pair correctly. */
 export const PAIRING_MARGIN_MS = MAX_VISIT_MS
+
+/**
+ * Is the inspector inside this restaurant now? True when the last counted scan
+ * there is an entry that is not older than MAX_VISIT_HOURS (an older one was
+ * never closed; the next scan opens a new visit, same rule as the scan route).
+ */
+export function isInside(last: Pick<VisitLog, 'action_type' | 'created_at'> | null | undefined, now: number = Date.now()): boolean {
+  if (!last || last.action_type !== 'entry') return false
+  return now - new Date(last.created_at).getTime() <= MAX_VISIT_MS
+}

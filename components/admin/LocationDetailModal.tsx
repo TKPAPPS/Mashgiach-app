@@ -6,6 +6,7 @@ import { useToast } from '@/components/ui/Toast'
 import { formatDateTime, KASHRUT_TYPE_LABELS } from '@/lib/utils/format'
 import MenuSection from '@/components/MenuSection'
 import VisitPhotosModal from './VisitPhotosModal'
+import ScanMethodTag from './ScanMethodTag'
 import { certificateObjectPath } from '@/lib/utils/storagePath'
 import type { Location, VisitLog, DeficiencyReport, VisitCheck, Profile, ChecklistItem } from '@/lib/supabase/types'
 import { Upload, Trash2, ExternalLink, X, Camera, Link2 } from 'lucide-react'
@@ -606,7 +607,7 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
               {visits.map(v => (
                 <tr key={v.id}>
                   <td className="noWrap">{formatDateTime(v.created_at)}</td>
-                  <td>{v.action_type === 'entry' ? 'כניסה' : 'יציאה'}</td>
+                  <td className="noWrap">{v.action_type === 'entry' ? 'כניסה' : 'יציאה'}<ScanMethodTag method={v.scan_method} /></td>
                   <td>{(v.inspector as { full_name: string } | undefined)?.full_name ?? '-'}</td>
                   <td><span className={`badge ${v.internal_status === 'success' ? 'badge--success' : 'badge--warning'}`}>
                     {v.internal_status === 'success' ? 'הצלחה' : v.internal_status}

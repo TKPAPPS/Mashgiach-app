@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Download, Camera } from 'lucide-react'
+import ScanMethodTag from './ScanMethodTag'
 import { formatDateTime, actionLabel, statusLabel, formatDistance } from '@/lib/utils/format'
 import { exportToExcel } from '@/lib/utils/excel'
 import type { VisitLog } from '@/lib/supabase/types'
@@ -83,6 +84,7 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
         actionLabel(l.action_type),
         l.action_type,        // raw 'entry' / 'exit'
         l.internal_status,    // raw 'gps_mismatch' / 'unauthorized' / ...
+        l.scan_method === 'gps' ? 'במיקום' : '',
       ].map(norm)
       if (!haystack.some(h => h.includes(q))) return false
     }
@@ -93,6 +95,7 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
     const rows = filtered.map(l => ({
       'תאריך ושעה': formatDateTime(l.created_at),
       'פעולה': actionLabel(l.action_type),
+      'שיטה': l.scan_method === 'gps' ? 'מיקום' : 'QR',
       'משגיח': (l.inspector as { full_name: string } | undefined)?.full_name ?? '-',
       'מקום': (l.location as { name: string } | undefined)?.name ?? '-',
       'עיר': (l.location as { city: string | null } | undefined)?.city ?? '-',
@@ -183,7 +186,7 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
                   return (
                     <tr key={log.id}>
                       <td className="noWrap">{formatDateTime(log.created_at)}</td>
-                      <td>{actionLabel(log.action_type)}</td>
+                      <td className="noWrap">{actionLabel(log.action_type)}<ScanMethodTag method={log.scan_method} /></td>
                       <td>{insp?.full_name ?? '-'}</td>
                       <td>{loc?.name ?? <span className="mutedCell">-</span>}</td>
                       <td>{loc?.city ?? <span className="mutedCell">-</span>}</td>
