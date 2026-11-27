@@ -6,8 +6,9 @@ import { useToast } from '@/components/ui/Toast'
 import { formatDateTime, KASHRUT_TYPE_LABELS } from '@/lib/utils/format'
 import MenuSection from '@/components/MenuSection'
 import VisitPhotosModal from './VisitPhotosModal'
+import { certificateObjectPath } from '@/lib/utils/storagePath'
 import type { Location, VisitLog, DeficiencyReport, VisitCheck, Profile, ChecklistItem } from '@/lib/supabase/types'
-import { Upload, Trash2, ExternalLink, X, Camera } from 'lucide-react'
+import { Upload, Trash2, ExternalLink, X, Camera, Link2 } from 'lucide-react'
 
 type InnerTab = 'info' | 'kashrus' | 'menu' | 'certificate' | 'procedure' | 'inspectors' | 'deficiencies' | 'checks' | 'visits'
 type ProcPhoto = { id: string; note: string | null; url: string | null }
@@ -194,13 +195,42 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
   }
 
   async function uploadCertificate(file: File) {
-    const path = `certificates/${loc.id}/${file.name}`
-    const { error: upErr } = await supabase.storage.from('certificates').upload(path, file, { upsert: true })
+    // The bucket is private: store the object path, never a URL.
+    const path = certificateObjectPath(loc.id, file.name)
+    const { error: upErr } = await supabase.storage.from('certificates').upload(path, file, { upsert: false, contentType: file.type || undefined })
     if (upErr) { toast('שגיאה בהעלאה', 'error'); return }
-    const { data: { publicUrl } } = supabase.storage.from('certificates').getPublicUrl(path)
-    await supabase.from('locations').update({ kashrus_certificate_url: publicUrl }).eq('id', loc.id)
-    setLocation(l => ({ ...l, kashrus_certificate_url: publicUrl }))
+    const { error } = await supabase.from('locations').update({ kashrus_certificate_url: path }).eq('id', loc.id)
+    if (error) { toast('שגיאה בשמירה', 'error'); return }
+    setLocation(l => ({ ...l, kashrus_certificate_url: path }))
     toast('תעודה הועלתה', 'success')
+  }
+
+  async function certificateLink(share: boolean): Promise<string | null> {
+    const res = await fetch(`/api/admin/certificate-url?location_id=${loc.id}${share ? '&share=1' : ''}`)
+    const j = await res.json().catch(() => ({}))
+    if (!res.ok || !j.url) { toast(j.error ?? 'שגיאה בפתיחת התעודה', 'error'); return null }
+    return j.url as string
+  }
+
+  async function viewCertificate() {
+    // Open the tab first (inside the click), then point it at the signed link,
+    // so Safari does not block it as a popup.
+    const win = window.open('', '_blank')
+    const url = await certificateLink(false)
+    if (!url) { win?.close(); return }
+    if (win) win.location.href = url
+    else window.location.href = url
+  }
+
+  async function copyShareLink() {
+    const url = await certificateLink(true)
+    if (!url) return
+    try {
+      await navigator.clipboard.writeText(url)
+      toast('הקישור הועתק. הוא בתוקף 7 ימים.', 'success')
+    } catch {
+      window.prompt('העתק את הקישור (בתוקף 7 ימים):', url)
+    }
   }
 
   async function deleteCertificate() {
@@ -398,13 +428,16 @@ export default function LocationDetailModal({ loc, onClose }: { loc: Location; o
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {location.kashrus_certificate_url ? (
             <div>
-              <div className="filePreview">
+              <div className="filePreview" style={{ flexWrap: 'wrap', gap: 8 }}>
                 <span>תעודת כשרות קיימת</span>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <a href={location.kashrus_certificate_url} target="_blank" rel="noreferrer"
-                    className="button button--ghost button--sm">
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button type="button" className="button button--ghost button--sm" onClick={viewCertificate}>
                     <ExternalLink size={14} /> צפה
-                  </a>
+                  </button>
+                  <button type="button" className="button button--ghost button--sm" onClick={copyShareLink}
+                    title="קישור שאפשר לשלוח למסעדה. בתוקף 7 ימים.">
+                    <Link2 size={14} /> העתק קישור לשיתוף
+                  </button>
                   <button className="button button--ghost button--sm" style={{ color: 'var(--danger)' }}
                     onClick={deleteCertificate}><Trash2 size={14} /> מחק</button>
                 </div>

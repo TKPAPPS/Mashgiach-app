@@ -57,7 +57,7 @@ CREATE TABLE locations (
   contact_notes              text,
   kashrus_procedure          text,
   kashrus_procedure_file_url text,
-  kashrus_certificate_url    text,
+  kashrus_certificate_url    text,   -- object path in bucket certificates (old rows: old public URL)
   opening_hours              text,   -- work & kashrut procedure
   inspector_arrival_time     text,   -- work & kashrut procedure
   working_days               text,   -- comma-joined Hebrew day letters, e.g. "א,ב,ג,ד,ה"
@@ -393,7 +393,8 @@ CREATE POLICY "sc_self_select"        ON scan_corrections FOR SELECT TO authenti
 -- -------------------------------------------------------
 -- Create these buckets manually or via Supabase CLI:
 --   "contracts"          (private) - inspector contracts
---   "certificates"       (private) - kashrus certificates
+--   "certificates"       (private) - kashrus certificates (public until 27/11/2026; migration
+--                        certificates_private set public=false and dropped public_read_certificates)
 --   "kashrus-procedures" (private) - kashrus procedure files
 --   "admin-reports"      (private) - admin location report attachments
 --   "documents"          (private) - standalone documents/contracts library
