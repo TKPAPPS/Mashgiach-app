@@ -8,6 +8,7 @@ import { formatDateTime, statusLabel, actionLabel, gpsAlertLabel, formatDistance
 import { visitCells, PAIRING_MARGIN_MS, bangkokDateOf, bangkokRange } from '@/lib/utils/visits'
 import VisitTimeCell from './VisitTimeCell'
 import ScanMethodTag from './ScanMethodTag'
+import CertificatesDueCard from './CertificatesDueCard'
 import type { VisitLog, GpsAlert, VisitCheck } from '@/lib/supabase/types'
 import type { SharedInspector, SharedLocation } from './AdminShell'
 import CitiesManager from './CitiesManager'
@@ -74,7 +75,7 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
     const shift = (iso: string, ms: number) => new Date(new Date(iso).getTime() + ms).toISOString()
 
     let logsQuery = supabase.from('visit_logs')
-      .select('id,action_type,location_id,inspector_id,internal_status,scan_method,device_lat,device_lng,distance_meters,created_at,inspector:profiles(id,full_name),location:locations(id,name,city)')
+      .select('id,action_type,location_id,inspector_id,internal_status,scan_method,auto_closed_at,manual_correction,device_lat,device_lng,distance_meters,created_at,inspector:profiles(id,full_name),location:locations(id,name,city)')
       .order('created_at', { ascending: false })
     let checksQuery = supabase.from('visit_checks')
       .select('id,visit_log_id,item_name,note,created_at,inspector:profiles(id,full_name),location:locations(id,name)')
@@ -270,6 +271,8 @@ export default function DashboardTab({ refreshKey, inspectors, locations, onCiti
       </Modal>
 
       {/* Stats */}
+      <CertificatesDueCard refreshKey={refreshKey} />
+
       <div className="statsGrid">
         {[
           { icon: CircleCheck,  label: 'סה״כ לוגים',       value: stats.total },

@@ -455,3 +455,20 @@ ALTER TABLE report_settings ADD COLUMN location_checkin_enabled boolean NOT NULL
 -- inspector_scan_health(p_days int default 30) RETURNS (inspector_id, scans, with_gps):
 -- real scan attempts (manual_correction = false; success, gps_mismatch, gps_rejected) in the
 -- last p_days, and how many carried a location. EXECUTE granted to service_role only.
+
+-- -------------------------------------------------------
+-- 27/11/2026: auto-close, required proof photo, certificate expiry
+-- (run by Tal in the SQL editor: sql/2-branch-c-columns.sql in the 27/11 media folder)
+-- -------------------------------------------------------
+ALTER TABLE visit_logs ADD COLUMN auto_closed_at timestamptz;          -- stamped by /api/cron/forgot-exit (or the scan route)
+ALTER TABLE visit_logs ADD COLUMN proof_skip_reason text;              -- why no proof photo, when required
+ALTER TABLE report_settings ADD COLUMN auto_close_hours int NOT NULL DEFAULT 12 CHECK (auto_close_hours BETWEEN 4 AND 12);
+ALTER TABLE report_settings ADD COLUMN require_proof_photo boolean NOT NULL DEFAULT false;
+ALTER TABLE report_settings ADD COLUMN cert_check_last_date date;      -- Bangkok date of the last certificate check
+ALTER TABLE locations ADD COLUMN kashrus_certificate_expires_on date;
+ALTER TABLE locations ADD COLUMN certificate_alert_stage smallint NOT NULL DEFAULT 0 CHECK (certificate_alert_stage BETWEEN 0 AND 3);
+ALTER TABLE locations ADD COLUMN certificate_alert_at timestamptz;
+-- Trigger locations_reset_cert_alert (BEFORE UPDATE ON locations): a changed
+-- kashrus_certificate_expires_on resets certificate_alert_stage to 0 and certificate_alert_at to null.
+CREATE INDEX visit_logs_open_entry_auto_idx ON visit_logs(created_at) WHERE action_type = 'entry' AND auto_closed_at IS NULL;
+-- Same day: bucket certificates set private, policy public_read_certificates dropped.

@@ -1,5 +1,37 @@
 # Changelog
 
+## 2026-11-27: Auto-close, required proof photo, certificate expiry
+
+From the manager's follow-up list of 27/11 (points 2ג, 2ד, 2ה, 2ז).
+
+- **Auto-close (2ג)**: `/api/cron/forgot-exit` (already every 15 min) now also stamps
+  `visit_logs.auto_closed_at` on entries still open after `report_settings.auto_close_hours`
+  (4 to 12, default 12 = old behaviour) and pushes the inspector to send a correction if they were
+  there. No exit time is invented: the visit counts 0 minutes and shows "נסגר אוטומטית". Only entries
+  that reached the limit in the last 2 hours are stamped, so history is never rewritten. The scan
+  route uses the same limit and stamps a stale entry itself (cron lag). `pairVisits()` closes a
+  stamped entry only with an exit from before the stamp or an approved correction
+  (`manual_correction`). Admin select in the renamed card "ביקור שלא נסרקה בו יציאה" (מנהלים tab);
+  the reminder must be shorter than the auto-close (route and select both enforce it). With the
+  reminder off the cron answers `reminders: "off"` (it used to answer `status: "disabled"`).
+- **Daily email "ביקורים שלא נסגרו" (2ז)**: section `open_visits`: visits whose entry is in the day
+  and that never got an exit (closed automatically, never closed, still open), plus the number of
+  correction requests waiting. Monthly: count per inspector.
+- **Required proof photo (2ד)**: switch "חובה לצלם לפחות בדיקה אחת בכל ביקור"
+  (`report_settings.require_proof_photo`, default off, new card in the מנהלים tab). With it on, a visit
+  with ticked checks needs one proof photo; "לא ניתן לצלם?" takes a written reason, saved on
+  `visit_logs.proof_skip_reason` and shown as "ללא תמונה" in the visit logs, the export and the daily
+  email. Enforced in `/api/inspector/exit-form`. The visit logs show a small preview of a visit's
+  first photo (proof first) in place of the camera icon (`/api/admin/visit-photo-counts`,
+  `thumbs: true`).
+- **Certificate expiry (2ה)**: `locations.kashrus_certificate_expires_on` ("בתוקף עד" on the
+  certificate tab), flags in the locations list and on the inspector home and restaurant page,
+  dashboard card "תעודות כשרות לחידוש" (also counts certificates with no date). Once a day from 08:00
+  Bangkok (`lib/utils/certCheck.ts`, run by the hourly `/api/cron/daily-report`, even when the email
+  is off) admins and the restaurant's inspectors get one push per stage: 30 days, 7 days, expired
+  (`certificate_alert_stage`, reset by trigger `locations_reset_cert_alert` when the date changes).
+  Daily email section `certificate_expiry`.
+
 ## 2026-11-27: Check-in by location, GPS rate per inspector, notification prompt
 
 From the manager's follow-up list of 27/11 (points 1, 2א, 2ב).

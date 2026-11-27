@@ -36,6 +36,11 @@ export type Location = {
   kashrus_procedure: string | null
   kashrus_procedure_file_url: string | null
   kashrus_certificate_url: string | null
+  /** Last day the certificate is valid (YYYY-MM-DD). */
+  kashrus_certificate_expires_on?: string | null
+  /** 0 none, 1 = 30-day alert sent, 2 = 7-day, 3 = expired. Reset by trigger when the date changes. */
+  certificate_alert_stage?: number
+  certificate_alert_at?: string | null
   opening_hours: string | null
   inspector_arrival_time: string | null
   working_days: string | null
@@ -90,6 +95,10 @@ export type VisitLog = {
   /** When the forgot-exit push went out for this entry (cron). */
   reminder_sent_at?: string | null
   qr_code_scanned: string | null
+  /** Set by the cron when an entry was closed automatically (no exit). */
+  auto_closed_at?: string | null
+  /** Why no proof photo was taken (when the photo is required). */
+  proof_skip_reason?: string | null
   /** 'qr' = QR scan, 'gps' = "כניסה במיקום" button (no QR, strict GPS). */
   scan_method?: 'qr' | 'gps'
   created_at: string
@@ -288,7 +297,7 @@ export type ScanCorrection = {
   location?: Pick<Location, 'id' | 'name' | 'city'>
 }
 
-export type ReportSection = 'time_per_restaurant' | 'deficiencies' | 'checklist_details' | 'gps_alerts'
+export type ReportSection = 'time_per_restaurant' | 'deficiencies' | 'checklist_details' | 'gps_alerts' | 'open_visits' | 'certificate_expiry'
 
 export type ReportSettings = {
   id: string
@@ -305,6 +314,12 @@ export type ReportSettings = {
   forgot_exit_minutes?: number
   /** Inspectors may check in and out by location, without the QR. */
   location_checkin_enabled?: boolean
+  /** Close an open visit after this many hours (4..12). */
+  auto_close_hours?: number
+  /** At least one checklist proof photo per visit with checks. */
+  require_proof_photo?: boolean
+  /** Bangkok date the certificate expiry check last ran. */
+  cert_check_last_date?: string | null
   updated_at: string
 }
 

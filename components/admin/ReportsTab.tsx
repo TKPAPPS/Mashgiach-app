@@ -29,6 +29,7 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
   const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState({ from: DEFAULT_FROM, to: '', inspector: '', location: '', action: '', search: '' })
   const [photoCounts, setPhotoCounts] = useState<Record<string, number>>({})
+  const [photoThumbs, setPhotoThumbs] = useState<Record<string, string>>({})
   const [photoModalId, setPhotoModalId] = useState<string | null>(null)
   const [timeSpent, setTimeSpent] = useState<Record<string, VisitCell>>({})
 
@@ -61,9 +62,9 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
       const res = await fetch('/api/admin/visit-photo-counts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: list.map(l => l.id) }),
+        body: JSON.stringify({ ids: list.map(l => l.id), thumbs: true }),
       })
-      if (res.ok) setPhotoCounts(await res.json())
+      if (res.ok) { const j = await res.json(); setPhotoCounts(j.counts ?? {}); setPhotoThumbs(j.thumbs ?? {}) }
     }
   }
 
@@ -105,6 +106,7 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
       'קו אורך': l.device_lng ?? '',
       'מרחק (מ׳)': l.distance_meters ?? '',
       'תמונות': photoCounts[l.id] ?? 0,
+      'סיבה ללא תמונה': l.proof_skip_reason ?? '',
     }))
     exportToExcel(rows, `דיווחים_${new Date().toLocaleDateString('he-IL').replace(/\//g, '-')}`, 'דיווחים')
   }
@@ -203,7 +205,19 @@ export default function ReportsTab({ refreshKey, inspectors, locations }: Props)
                           : <span className="mutedCell">-</span>}
                       </td>
                       <td>
-                        {count > 0 ? (
+                        {count > 0 && photoThumbs[log.id] ? (
+                          <button type="button" title="צפה בתמונות" aria-label={`צפה ב-${count} תמונות`} data-testid="visit-thumb"
+                            onClick={() => setPhotoModalId(log.id)}
+                            style={{ position: 'relative', width: 40, height: 40, padding: 0, border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden', cursor: 'pointer', background: 'var(--bg-muted, #f5f5f5)', display: 'block' }}>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={photoThumbs[log.id]} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                            {count > 1 && (
+                              <span style={{ position: 'absolute', bottom: 1, insetInlineEnd: 1, background: 'rgba(12,31,64,.85)', color: '#fff', borderRadius: 99, fontSize: '.6rem', minWidth: 15, height: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px', lineHeight: 1 }}>{count}</span>
+                            )}
+                          </button>
+                        ) : log.proof_skip_reason ? (
+                          <span className="badge badge--warning" title={`הסיבה: ${log.proof_skip_reason}`} data-testid="no-photo-flag">ללא תמונה</span>
+                        ) : count > 0 ? (
                           <button
                             className="button button--icon button--ghost"
                             style={{ position: 'relative' }}

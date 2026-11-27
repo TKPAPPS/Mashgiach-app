@@ -9,6 +9,8 @@ const SECTION_OPTIONS: { id: ReportSection; label: string }[] = [
   { id: 'deficiencies',        label: 'ליקויי כשרות והערות' },
   { id: 'checklist_details',   label: 'פירוט בדיקות שבוצעו' },
   { id: 'gps_alerts',          label: 'חריגות מיקום (GPS)' },
+  { id: 'open_visits',         label: 'ביקורים שלא נסגרו' },
+  { id: 'certificate_expiry',  label: 'תעודות כשרות שפוקעות' },
 ]
 
 // Same section keys, but the monthly report renders the checklist as an
@@ -18,6 +20,7 @@ const MONTHLY_SECTION_OPTIONS: { id: ReportSection; label: string }[] = [
   { id: 'deficiencies',        label: 'ליקויי כשרות והערות' },
   { id: 'checklist_details',   label: 'סיכום בדיקות לפי מסעדה' },
   { id: 'gps_alerts',          label: 'סיכום חריגות מיקום (GPS) לפי משגיח' },
+  { id: 'open_visits',         label: 'ביקורים שלא נסגרו לפי משגיח' },
 ]
 
 export default function ReportSettings() {

@@ -8,6 +8,7 @@ import type { Profile } from '@/lib/supabase/types'
 import ReportSettings from './ReportSettings'
 import GpsEnforcementSettings from './GpsEnforcementSettings'
 import ForgotExitSettings from './ForgotExitSettings'
+import ProofPhotoSettings from './ProofPhotoSettings'
 
 type Props = {
   refreshKey: number
@@ -213,6 +214,7 @@ export default function AdminsTab({ refreshKey, emailMap, currentUserId }: Props
 
     <GpsEnforcementSettings />
     <ForgotExitSettings />
+    <ProofPhotoSettings />
     <ReportSettings />
     </>
   )

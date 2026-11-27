@@ -10,6 +10,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json()
   const { visit_log_id, location_id, checks } = body
+  const skipReason = typeof body.proof_skip_reason === 'string' ? body.proof_skip_reason.trim().slice(0, 300) : ''
 
   if (!visit_log_id || !location_id || !Array.isArray(checks)) {
     return NextResponse.json({ error: 'Invalid payload' }, { status: 400 })
@@ -54,6 +55,22 @@ export async function POST(req: NextRequest) {
   if (!assignment) {
     return NextResponse.json({ error: 'Inspector not assigned to this location' }, { status: 403 })
   }
+
+  // Required proof photo (admin switch): a visit with ticked checks needs at
+  // least one photo tied to a check, or a written reason why there is none.
+  const { data: settings } = await service.from('report_settings').select('require_proof_photo').limit(1).maybeSingle()
+  let proofReason: string | null = null
+  if (settings?.require_proof_photo && checks.length > 0) {
+    const { count } = await service.from('visit_photos').select('id', { count: 'exact', head: true })
+      .eq('visit_log_id', visit_log_id).not('checklist_item_id', 'is', null)
+    if (!count) {
+      if (skipReason.length < 3) {
+        return NextResponse.json({ error: 'יש לצלם הוכחה לפחות לבדיקה אחת, או לכתוב למה לא ניתן לצלם.', code: 'proof_required' }, { status: 400 })
+      }
+      proofReason = skipReason
+    }
+  }
+  await service.from('visit_logs').update({ proof_skip_reason: proofReason }).eq('id', visit_log_id)
 
   // Idempotent: delete any prior visit_checks for this visit_log before inserting
   await service.from('visit_checks').delete().eq('visit_log_id', visit_log_id)

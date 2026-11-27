@@ -3,7 +3,7 @@ import { createServiceClient } from '@/lib/supabase/server'
 import { requireAdmin } from '@/lib/supabase/requireAdmin'
 import type { ReportSection } from '@/lib/supabase/types'
 
-const VALID_SECTIONS: ReportSection[] = ['time_per_restaurant', 'deficiencies', 'checklist_details', 'gps_alerts']
+const VALID_SECTIONS: ReportSection[] = ['time_per_restaurant', 'deficiencies', 'checklist_details', 'gps_alerts', 'open_visits', 'certificate_expiry']
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/
 

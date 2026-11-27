@@ -8,6 +8,7 @@ import { formatRelative, KASHRUT_TYPE_LABELS } from '@/lib/utils/format'
 import MenuSection from '@/components/MenuSection'
 import LocationCheckIn from '@/components/inspector/LocationCheckIn'
 import { isInside } from '@/lib/utils/visits'
+import { certStatus, certBadgeClass, fmtDay } from '@/lib/utils/certExpiry'
 import { useToast } from '@/components/ui/Toast'
 import { toJpegFile } from '@/lib/utils/image'
 import PhotoAddControl from '@/components/ui/PhotoAddControl'
@@ -509,6 +510,15 @@ export default function InspectorLocationPage({ params }: { params: Promise<{ id
                 <ExternalLink size={13} /> תעודת כשרות
               </button>
             )}
+            {location.kashrus_certificate_expires_on && (() => {
+              const st = certStatus(location.kashrus_certificate_expires_on)!
+              return (
+                <p style={{ margin: 0, fontSize: '.82rem', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }} data-testid="cert-expiry-line">
+                  <span style={{ color: 'var(--muted)' }}>התעודה בתוקף עד {fmtDay(location.kashrus_certificate_expires_on)}</span>
+                  {st.kind !== 'ok' && <span className={`badge ${certBadgeClass(st.kind)}`}>{st.text}</span>}
+                </p>
+              )
+            })()}
           </div>
         </div>
 
