@@ -14,6 +14,8 @@ export default function ScanPage() {
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [failCode, setFailCode] = useState<string | null>(null)
   const [locationCheckin, setLocationCheckin] = useState(false)
+  // Bumped by "נסה שוב": restarts the camera (navigating to the same URL does not remount the page).
+  const [attempt, setAttempt] = useState(0)
   const scannerRef = useRef<{ stop: () => Promise<void> } | null>(null)
   const hasScanned = useRef(false)
 
@@ -119,7 +121,7 @@ export default function ScanPage() {
         scannerRef.current = null
       }
     }
-  }, [doScan])
+  }, [doScan, attempt])
 
   function handleRetry() {
     hasScanned.current = false
@@ -128,7 +130,7 @@ export default function ScanPage() {
     setFailCode(null)
     setProcessing(false)
     setCameraError(null)
-    router.replace('/inspector/scan')
+    setAttempt(a => a + 1)
   }
 
   if (scanError) {
