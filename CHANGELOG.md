@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-11-27: Kashrut certificates are private
+
+From the manager's follow-up list of 27/11 (point 2ו).
+
+- The `certificates` bucket was public: anyone holding a link could open a certificate. It is now
+  private (bucket flag off, policy `public_read_certificates` dropped; `admin_all_certificates` kept).
+- New routes `/api/admin/certificate-url` (admin; `share=1` signs for 7 days, else 1 hour) and
+  `/api/inspector/certificate-url` (1 hour, only for a restaurant the inspector is assigned to).
+- Admin certificate tab: "צפה" opens a signed link; new "העתק קישור לשיתוף" copies a 7-day link to
+  send to a restaurant. Inspector restaurant page: the certificate button opens a signed link.
+- Uploads store the object path, not a URL, under an ASCII file name with a time prefix
+  (`certificateObjectPath()`; a Hebrew file name used to fail as an invalid storage key).
+- `storagePathFrom()` (`lib/utils/storagePath.ts`) reads both a stored path and an old public URL
+  (decoded: 7 of the 40 old links had `%20` in them), so the 40 existing rows were not rewritten.
+
 ## 2026-11-26: Forgot-exit push for inspectors, proof photo per checklist item, push sign-up fixed
 
 From the manager's fix list (points 7, 10 and 13).

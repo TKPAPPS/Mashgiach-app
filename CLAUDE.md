@@ -248,7 +248,7 @@ Table `cities` (`name_he` unique, `name_en`, `active`). A location points to a c
 ## Storage buckets
 
 - `contracts` — private; signed URLs via `/api/admin/contract-url` or `/api/inspector/contract-url`
-- `certificates` — public; kosher certificates for locations
+- `certificates` (private since 27/11/2026): kashrut certificates. `locations.kashrus_certificate_url` holds the object path (old rows hold the old public URL; `storagePathFrom()` in `lib/utils/storagePath.ts` reads both). Open only through `/api/admin/certificate-url` (1 hour, `share=1` for a 7-day link to send to a restaurant) or `/api/inspector/certificate-url` (assigned restaurants only). Never use `getPublicUrl` for it again. New uploads go through `certificateObjectPath()` (ASCII name).
 - `kashrus-procedures` — private
 - `admin-reports` — private; signed URLs per attachment (1-hour expiry)
 - `documents` — private; standalone documents/contracts library (signed URLs, 1-hour expiry)

@@ -229,6 +229,17 @@ export default function InspectorLocationPage({ params }: { params: Promise<{ id
     setSavingFields(false)
   }
 
+  async function openCertificate() {
+    // Open the tab inside the tap, then point it at the signed link (Safari
+    // blocks a window opened after an await).
+    const win = window.open('', '_blank')
+    const res = await fetch(`/api/inspector/certificate-url?location_id=${id}`)
+    const j = await res.json().catch(() => ({}))
+    if (!res.ok || !j.url) { win?.close(); toast(j.error ?? 'שגיאה בפתיחת התעודה', 'error'); return }
+    if (win) win.location.href = j.url
+    else window.location.href = j.url
+  }
+
   async function saveKashrus() {
     setSavingKashrus(true)
     const res = await fetch('/api/inspector/procedure', {
@@ -488,10 +499,9 @@ export default function InspectorLocationPage({ params }: { params: Promise<{ id
               </button>
             </div>
             {location.kashrus_certificate_url && (
-              <a href={location.kashrus_certificate_url} target="_blank" rel="noreferrer"
-                className="button button--ghost button--sm">
+              <button type="button" className="button button--ghost button--sm" onClick={openCertificate}>
                 <ExternalLink size={13} /> תעודת כשרות
-              </a>
+              </button>
             )}
           </div>
         </div>
